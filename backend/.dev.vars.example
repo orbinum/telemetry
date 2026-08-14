@@ -1,0 +1,10 @@
+# Copy to .dev.vars for local development:  cp .dev.vars.example .dev.vars
+#
+# Empty means "accept every chain", which is the only thing that works against
+# `orbinum-node --dev`: that chain gets a fresh genesis hash on every restart,
+# so it can never appear in a fixed allowlist. wrangler dev reads this file and
+# it overrides the `vars` block in wrangler.jsonc, which holds the real testnet
+# hash for production.
+TELEMETRY_TESTNET_GENESIS=
+TELEMETRY_MAINNET_GENESIS=
+TELEMETRY_CHAINS=

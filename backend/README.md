@@ -49,9 +49,10 @@ tests total; run them with `pnpm test`.
 
 ## Environment variables
 
-Set in `wrangler.jsonc` under `vars` (per environment) or in `.dev.vars` for
-local overrides. All are optional; all are validated, and invalid entries are
-ignored rather than crashing the worker.
+The deployed values live in `wrangler.jsonc` under `vars`. Locally, copy
+[`.dev.vars.example`](.dev.vars.example) to `.dev.vars` — `wrangler dev` reads
+it and it overrides that block. All are optional; all are validated, and
+invalid entries are ignored rather than crashing the worker.
 
 | Variable                    | Purpose                                             |
 | --------------------------- | --------------------------------------------------- |
@@ -78,6 +79,25 @@ curl -s -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"chain_getBlockHash","params":[0]}' \
   https://rpc-1.testnet.orbinum.io
 ```
+
+## Deploy
+
+`pnpm deploy` from this directory, or connect the repository in the Cloudflare
+dashboard (Workers → Create → Import a repository) so every push to `main`
+deploys:
+
+| Field                              | Value             |
+| ---------------------------------- | ----------------- |
+| Root directory (Advanced settings) | `backend`         |
+| Build command                      | `pnpm install`    |
+| Deploy command                     | `pnpm run deploy` |
+
+Root directory matters: `wrangler.jsonc` lives here, not at the repository
+root, and wrangler resolves it relative to the working directory.
+
+There is no `[env.production]` block — one worker, one set of `vars`. A second
+environment would need every binding redeclared (Cloudflare environments do not
+inherit) and would collide with this one on both name and route.
 
 ## Limits
 

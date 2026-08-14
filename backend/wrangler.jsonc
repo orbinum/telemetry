@@ -14,8 +14,6 @@
   "name": "orbinum-telemetry-back",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-13",
-  // custom_domain only — a Page Rule or redirect would silently kill the
-  // node handshake (soketto treats anything but 101 as failure, plan §10).
   "routes": [
     {
       "pattern": "telemetry.orbinum.io",
@@ -70,71 +68,10 @@
       },
     ],
   },
-  // Empty = accept every chain, which is what wrangler dev wants (a --dev
-  // chain has a fresh genesis on each restart). Production sets the real ones.
   "vars": {
-    "TELEMETRY_TESTNET_GENESIS": "",
+    "TELEMETRY_TESTNET_GENESIS": "0x58e2de05e550e64bb73bb2aeb706431dae70dcd1b589d477033c6e3aef3680ae",
     "TELEMETRY_MAINNET_GENESIS": "",
     "TELEMETRY_CHAINS": "",
   },
   "upload_source_maps": true,
-  "env": {
-    "production": {
-      "name": "orbinum-telemetry-back",
-      "routes": [
-        {
-          "pattern": "telemetry.orbinum.io",
-          "custom_domain": true,
-        },
-      ],
-      "workers_dev": false,
-      "preview_urls": false,
-      "observability": {
-        "enabled": true,
-      },
-      "durable_objects": {
-        "bindings": [
-          {
-            "name": "CHAIN",
-            "class_name": "ChainDO",
-          },
-          {
-            "name": "GATEWAY",
-            "class_name": "GatewayDO",
-          },
-        ],
-      },
-      "unsafe": {
-        "bindings": [
-          {
-            "name": "SUBMIT_LIMITER",
-            "type": "ratelimit",
-            "namespace_id": "6001",
-            "simple": {
-              "limit": 20,
-              "period": 60,
-            },
-          },
-          {
-            "name": "FEED_LIMITER",
-            "type": "ratelimit",
-            "namespace_id": "6002",
-            "simple": {
-              "limit": 60,
-              "period": 60,
-            },
-          },
-        ],
-      },
-      // Read from rpc-1.testnet.orbinum.io on 2026-08-14. Note this is NOT
-      // the hash documented in node-deploy TOPOLOGY.md — that one is stale.
-      // Fill MAINNET_GENESIS at launch; empty entries are simply ignored.
-      "vars": {
-        "TELEMETRY_TESTNET_GENESIS": "0x58e2de05e550e64bb73bb2aeb706431dae70dcd1b589d477033c6e3aef3680ae",
-        "TELEMETRY_MAINNET_GENESIS": "",
-        "TELEMETRY_CHAINS": "",
-      },
-      "upload_source_maps": true,
-    },
-  },
 }
