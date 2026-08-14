@@ -76,7 +76,7 @@ jobs:
       # again here rather than trusting a green run on an older commit.
       - name: Install dependencies
         if: steps.check_tag.outputs.tag_exists == 'false'
-        run: pnpm setup
+        run: pnpm install:all
 
       - name: Lint
         if: steps.check_tag.outputs.tag_exists == 'false'

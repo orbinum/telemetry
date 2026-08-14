@@ -20,7 +20,7 @@ it is not a package and has no build step of its own.
 Each package keeps its own lockfile, so install them separately:
 
 ```sh
-pnpm setup             # or: pnpm -C backend install && pnpm -C frontend install
+pnpm install:all       # or: pnpm -C backend install && pnpm -C frontend install
 pnpm dev:back          # worker on :8787
 pnpm dev:front         # UI on :5173
 ```

@@ -5,7 +5,7 @@
   "scripts": {
     "dev:back": "pnpm -C backend dev",
     "dev:front": "pnpm -C frontend dev",
-    "setup": "pnpm -C backend install && pnpm -C frontend install",
+    "install:all": "pnpm -C backend install && pnpm -C frontend install",
     "lint": "pnpm -C backend lint && pnpm -C frontend lint",
     "fmt": "pnpm -C backend fmt && pnpm -C frontend fmt",
     "fmt:check": "pnpm -C backend fmt:check && pnpm -C frontend fmt:check",
