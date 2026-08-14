@@ -5,9 +5,11 @@
  * api-worker's wrangler.toml (1xxx api-worker, 2xxx/3xxx indexer, 4xxx
  * faucet, 5xxx public-sale); 6xxx is telemetry's block.
  *
- * NOTE on [env.production]: Cloudflare environments do **not** inherit
- * top-level config. Everything an environment needs is redeclared inside it —
- * omitting a binding there silently ships a worker without it.
+ * There is deliberately no `env` block. Cloudflare environments do not inherit
+ * top-level config, so a second one means redeclaring every binding and
+ * risking a worker that silently ships without one; with a single deploy
+ * target there is nothing to gain. `wrangler dev` overrides what it needs
+ * through .dev.vars instead.
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -43,9 +45,6 @@
       "new_sqlite_classes": ["ChainDO", "GatewayDO"],
     },
   ],
-  // Connection-churn limits. Frames on an established socket do NOT count as
-  // requests, so these only throttle reconnect loops; the per-connection byte
-  // budget in the GatewayDO covers the rest.
   "unsafe": {
     "bindings": [
       {

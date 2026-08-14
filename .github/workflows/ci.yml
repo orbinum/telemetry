@@ -47,6 +47,11 @@ jobs:
       # Regenerates CloudflareBindings from wrangler.jsonc, then fails if the
       # committed types are stale — a drifted binding type would otherwise
       # only surface at deploy time.
+      #
+      # This only works because cf-typegen passes --strict-vars=false. With
+      # literal types, a var's *value* lands in the generated file, so a
+      # developer with a .dev.vars gets different output than this runner and
+      # the check fails on a difference that means nothing.
       - name: Worker types are up to date
         run: |
           pnpm cf-typegen
