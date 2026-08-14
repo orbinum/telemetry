@@ -1,0 +1,177 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    # Only the root package.json: it holds the single version for the whole
+    # service, so a release is exactly "the version number changed". Watching
+    # CHANGELOG.md too would fire the whole gate every time the Unreleased
+    # section is edited, which is most pushes.
+    paths:
+      - 'package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, Tag and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Extract version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION"
+
+      # package.json also changes when a script is edited, so the path filter
+      # alone is not "the version went up". The tag is the real record of what
+      # shipped: if it exists, this push changed something else.
+      - name: Check whether this version was already released
+        id: check_tag
+        run: |
+          if git rev-parse "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "⚠️  Tag ${{ steps.version.outputs.tag }} already exists — nothing to release."
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Tag ${{ steps.version.outputs.tag }} is new."
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      # A release whose notes would be empty is a mistake, not a release: the
+      # CHANGELOG section is the release notes.
+      - name: Require a CHANGELOG entry for this version
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          if ! grep -q "^## \[${{ steps.version.outputs.version }}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [${{ steps.version.outputs.version }}]' section."
+            exit 1
+          fi
+          echo "✅ CHANGELOG entry found."
+
+      # A release must not ship code that would fail CI, so the whole gate runs
+      # again here rather than trusting a green run on an older commit.
+      - name: Install dependencies
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: pnpm setup
+
+      - name: Lint
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: pnpm lint
+
+      - name: Format check
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: pnpm fmt:check
+
+      - name: Typecheck
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: pnpm typecheck
+
+      - name: Test
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: pnpm test
+
+      - name: Build
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: pnpm build
+
+      # The frontend bundle is what Pages serves; attaching it makes a release
+      # reproducible and lets an operator diff or roll back without rebuilding.
+      - name: Package release assets
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          TAG=${{ steps.version.outputs.tag }}
+          mkdir -p release
+
+          tar -czf "release/orbinum-telemetry-frontend-${TAG}.tar.gz" -C frontend dist
+
+          # Config that determines how the worker behaves in production.
+          tar -czf "release/orbinum-telemetry-worker-config-${TAG}.tar.gz" \
+            backend/wrangler.jsonc backend/worker-configuration.d.ts
+
+          (cd release && sha256sum ./*.tar.gz > "checksums-${TAG}.txt")
+          ls -lh release/
+          cat "release/checksums-${TAG}.txt"
+
+      - name: Create release notes
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          # The section for the version being released, by exact heading —
+          # matching "the first ## [" instead would pick up [Unreleased] and
+          # produce empty notes.
+          awk -v tag="## [${{ steps.version.outputs.version }}]" '
+            index($0, tag) == 1  { flag = 1; next }
+            flag && /^## \[/     { exit }
+            flag && /^\[[^]]+\]:/{ exit }   # link definitions end the section
+            flag
+          ' CHANGELOG.md > release_notes_body.md
+
+          {
+            echo "## ${{ steps.version.outputs.tag }}"
+            echo ""
+            if [ -s release_notes_body.md ]; then
+              cat release_notes_body.md
+            else
+              echo "- Release generated from CI."
+            fi
+            echo ""
+            echo "## Deploy"
+            echo ""
+            echo '```sh'
+            echo "pnpm deploy:back    # worker → telemetry.orbinum.io"
+            echo "pnpm deploy:front   # Pages  → telemetry.orbinum.network"
+            echo '```'
+            echo ""
+            echo "## Release Assets"
+            echo ""
+            echo "- \`orbinum-telemetry-frontend-${{ steps.version.outputs.tag }}.tar.gz\` — built UI, as served by Pages"
+            echo "- \`orbinum-telemetry-worker-config-${{ steps.version.outputs.tag }}.tar.gz\` — wrangler config and binding types"
+            echo "- \`checksums-${{ steps.version.outputs.tag }}.txt\` — SHA-256 checksums"
+          } > release_notes.md
+
+      - name: Create and push tag
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          files: |
+            release/*.tar.gz
+            release/*.txt
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

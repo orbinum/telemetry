@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Backend and frontend are independent packages with disjoint toolchains
+  # (wrangler + vitest-node vs vite + tsc -b), so they run in parallel and a
+  # failure in one still reports the other's result.
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm fmt:check
+
+      # Regenerates CloudflareBindings from wrangler.jsonc, then fails if the
+      # committed types are stale — a drifted binding type would otherwise
+      # only surface at deploy time.
+      - name: Worker types are up to date
+        run: |
+          pnpm cf-typegen
+          if ! git diff --exit-code -- worker-configuration.d.ts; then
+            echo "::error::worker-configuration.d.ts is stale — run 'pnpm cf-typegen' and commit the result."
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # `wrangler deploy --dry-run`: bundles the worker and validates the
+      # config without touching Cloudflare.
+      - name: Build
+        run: pnpm build
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm fmt:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # `tsc -b && vite build` — also typechecks shared/, which both packages
+      # compile from source (there is no separate shared build step).
+      - name: Build
+        run: pnpm build
+
+  protect-main:
+    name: Require PR source to be develop
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    steps:
+      - name: Check head branch
+        run: |
+          if [ "${{ github.head_ref }}" != "develop" ]; then
+            echo "❌ PRs to main must come from 'develop', not '${{ github.head_ref }}'."
+            exit 1
+          fi
+          echo "✅ PR source is 'develop'."
+
+  all-checks:
+    name: All Checks Passed
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    if: always()
+    steps:
+      - name: Check status
+        run: |
+          if [ "${{ needs.backend.result }}" != "success" ]; then
+            echo "❌ Backend checks failed."
+            exit 1
+          fi
+          if [ "${{ needs.frontend.result }}" != "success" ]; then
+            echo "❌ Frontend checks failed."
+            exit 1
+          fi
+          echo "✅ All checks passed."
