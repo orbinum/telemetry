@@ -13,7 +13,7 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "clean": "rm -rf dist node_modules package-lock.json pnpm-lock.yaml",
-    "check": "pnpm lint && pnpm typecheck && pnpm fmt && pnpm build && pnpm test"
+    "check": "pnpm lint && pnpm typecheck && pnpm fmt:check && pnpm build && pnpm test"
   },
   "dependencies": {
     "hono": "^4.13.1"

@@ -1,41 +1,140 @@
 /**
- * For more details on how to configure Wrangler, refer to:
- * https://developers.cloudflare.com/workers/wrangler/configuration/
+ * Orbinum Telemetry worker — node ingest (/submit) + browser feed (/feed).
+ *
+ * Rate-limiter namespace ids follow the org-wide allocation documented in
+ * api-worker's wrangler.toml (1xxx api-worker, 2xxx/3xxx indexer, 4xxx
+ * faucet, 5xxx public-sale); 6xxx is telemetry's block.
+ *
+ * NOTE on [env.production]: Cloudflare environments do **not** inherit
+ * top-level config. Everything an environment needs is redeclared inside it —
+ * omitting a binding there silently ships a worker without it.
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "orbinum-telemetry-back",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-13",
-  "assets": {
-    "binding": "ASSETS",
-    "directory": "./public",
-  },
+  // custom_domain only — a Page Rule or redirect would silently kill the
+  // node handshake (soketto treats anything but 101 as failure, plan §10).
+  "routes": [
+    {
+      "pattern": "telemetry.orbinum.io",
+      "custom_domain": true,
+    },
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
   "observability": {
     "enabled": true,
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHAIN",
+        "class_name": "ChainDO",
+      },
+      {
+        "name": "GATEWAY",
+        "class_name": "GatewayDO",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ChainDO", "GatewayDO"],
+    },
+  ],
+  // Connection-churn limits. Frames on an established socket do NOT count as
+  // requests, so these only throttle reconnect loops; the per-connection byte
+  // budget in the GatewayDO covers the rest.
+  "unsafe": {
+    "bindings": [
+      {
+        "name": "SUBMIT_LIMITER",
+        "type": "ratelimit",
+        "namespace_id": "6001",
+        "simple": {
+          "limit": 20,
+          "period": 60,
+        },
+      },
+      {
+        "name": "FEED_LIMITER",
+        "type": "ratelimit",
+        "namespace_id": "6002",
+        "simple": {
+          "limit": 60,
+          "period": 60,
+        },
+      },
+    ],
+  },
+  // Empty = accept every chain, which is what wrangler dev wants (a --dev
+  // chain has a fresh genesis on each restart). Production sets the real ones.
+  "vars": {
+    "TELEMETRY_TESTNET_GENESIS": "",
+    "TELEMETRY_MAINNET_GENESIS": "",
+    "TELEMETRY_CHAINS": "",
+  },
   "upload_source_maps": true,
-  /**
-   * Smart Placement
-   * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
-   */
-  // "placement": {  "mode": "smart" }
-  /**
-   * Bindings
-   * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
-   * databases, object storage, AI inference, real-time communication and more.
-   * https://developers.cloudflare.com/workers/runtime-apis/bindings/
-   */
-  /**
-   * Environment Variables
-   * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
-   * Note: Use secrets to store sensitive data.
-   * https://developers.cloudflare.com/workers/configuration/secrets/
-   */
-  // "vars": {  "MY_VARIABLE": "production_value" }
-  /**
-   * Service Bindings (communicate between multiple Workers)
-   * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
-   */
-  // "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
+  "env": {
+    "production": {
+      "name": "orbinum-telemetry-back",
+      "routes": [
+        {
+          "pattern": "telemetry.orbinum.io",
+          "custom_domain": true,
+        },
+      ],
+      "workers_dev": false,
+      "preview_urls": false,
+      "observability": {
+        "enabled": true,
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "CHAIN",
+            "class_name": "ChainDO",
+          },
+          {
+            "name": "GATEWAY",
+            "class_name": "GatewayDO",
+          },
+        ],
+      },
+      "unsafe": {
+        "bindings": [
+          {
+            "name": "SUBMIT_LIMITER",
+            "type": "ratelimit",
+            "namespace_id": "6001",
+            "simple": {
+              "limit": 20,
+              "period": 60,
+            },
+          },
+          {
+            "name": "FEED_LIMITER",
+            "type": "ratelimit",
+            "namespace_id": "6002",
+            "simple": {
+              "limit": 60,
+              "period": 60,
+            },
+          },
+        ],
+      },
+      // Read from rpc-1.testnet.orbinum.io on 2026-08-14. Note this is NOT
+      // the hash documented in node-deploy TOPOLOGY.md — that one is stale.
+      // Fill MAINNET_GENESIS at launch; empty entries are simply ignored.
+      "vars": {
+        "TELEMETRY_TESTNET_GENESIS": "0x58e2de05e550e64bb73bb2aeb706431dae70dcd1b589d477033c6e3aef3680ae",
+        "TELEMETRY_MAINNET_GENESIS": "",
+        "TELEMETRY_CHAINS": "",
+      },
+      "upload_source_maps": true,
+    },
+  },
 }
