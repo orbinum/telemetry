@@ -1,0 +1,3 @@
+# SPA fallback: client-side routes (/chain/0x…, /settings) must serve
+# index.html instead of 404ing on a hard reload.
+/*  /index.html  200

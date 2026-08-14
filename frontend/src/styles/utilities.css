@@ -1,0 +1,80 @@
+/* =============================================================================
+   Utilities — color-mix helpers que no pueden vivir en @theme
+   Generan clases como: bg-error-mix, border-accent-dim, edge-success, etc.
+============================================================================= */
+
+/* ── Status tint backgrounds ─────────────────────────────────────────────── */
+
+.bg-success-mix {
+  background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface));
+}
+.bg-error-mix {
+  background: color-mix(in srgb, var(--color-error) 10%, var(--color-surface));
+}
+.bg-warning-mix {
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface));
+}
+.bg-accent-mix {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+}
+
+.bg-success-tint {
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+.bg-error-tint {
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+}
+.bg-warning-tint {
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+}
+.bg-accent-tint {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+.bg-muted-tint {
+  background: color-mix(in srgb, var(--color-muted) 10%, transparent);
+}
+
+/* ── Status tint borders ─────────────────────────────────────────────────── */
+
+.border-success-mix {
+  border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
+}
+.border-error-mix {
+  border-color: color-mix(in srgb, var(--color-error) 25%, transparent);
+}
+.border-warning-mix {
+  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
+}
+.border-accent-mix {
+  border-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+.border-accent-dim {
+  border-color: color-mix(in srgb, var(--color-accent) 16%, var(--color-border));
+}
+
+/* ── Edge highlight lines (h-px absolute top of card) ───────────────────── */
+
+.edge-accent {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-accent) 20%, transparent),
+    transparent
+  );
+}
+.edge-success {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-success) 40%, transparent),
+    transparent
+  );
+}
+.edge-error {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-error) 40%, transparent),
+    transparent
+  );
+}

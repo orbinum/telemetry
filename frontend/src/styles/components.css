@@ -1,0 +1,149 @@
+/* =============================================================================
+   Components — shared with app/privacy-explorer, trimmed to what telemetry uses
+============================================================================= */
+
+@layer components {
+  /* ── Wordmark ────────────────────────────────────────────────────────────── */
+  /* Gradient-filled brand title (Instrument Sans, heavy). Theme-aware so it
+     stays legible on both light and dark backgrounds. */
+  .wordmark {
+    font-family: var(--font-sans);
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    background: linear-gradient(
+      135deg,
+      var(--accent) 0%,
+      color-mix(in srgb, var(--accent) 63%, var(--bg)) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* ── Glass surfaces ──────────────────────────────────────────────────────── */
+
+  .glass-card {
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    border: 1px solid var(--border);
+    transition:
+      border-color 0.3s ease,
+      transform 0.3s ease;
+  }
+
+  .glass-card:hover {
+    border-color: var(--muted);
+  }
+
+  .nav-glass {
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    transition: all 0.2s ease;
+  }
+
+  .btn-ghost:hover {
+    background: var(--overlay-hover);
+    border-color: var(--muted);
+  }
+
+  /* ── Node table ──────────────────────────────────────────────────────────── */
+  /* A CSS grid, not a <table>: virtualized rows are absolutely positioned,
+     which table layout cannot express. One shared column template keeps the
+     header and the rows aligned. */
+
+  /* Fixed widths on the numeric columns are sized to their uppercase headers
+     ("PROPAGATION" is the widest); the text columns take the slack. */
+  .node-grid {
+    --node-columns: minmax(9rem, 1.3fr) minmax(10rem, 1.4fr) minmax(7rem, 1fr) 5rem 4.5rem 6rem
+      minmax(7rem, 0.9fr) 7rem 8rem 6.5rem 7rem minmax(8rem, 1fr);
+    /* Tall enough for the tallest cell content (the 20px copy button plus
+       padding). Keep in sync with ROW_HEIGHT in NodeTable.tsx. */
+    --node-row-height: 36px;
+    font-size: 0.8125rem;
+    min-width: 72rem;
+  }
+
+  /* Row height is fixed here and mirrored by ROW_HEIGHT in NodeTable.tsx: the
+     virtualizer positions rows absolutely, so a row that renders taller than
+     it is told leaves the container permanently scrollable — even with a
+     single row. Cells must not add height on their own. */
+  .node-grid-row {
+    display: grid;
+    grid-template-columns: var(--node-columns);
+    align-items: center;
+    height: var(--node-row-height);
+  }
+
+  .node-grid-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .node-grid-head button,
+  .node-grid-head span {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.625rem 0.75rem;
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+    text-align: left;
+    width: 100%;
+  }
+
+  .node-grid-head button:hover {
+    color: var(--accent);
+  }
+
+  .node-grid-head .num button,
+  .node-grid-head .num span {
+    justify-content: flex-end;
+  }
+
+  .node-grid-row > * {
+    padding: 0.5rem 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .node-grid-body .node-grid-row {
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  }
+
+  .node-grid-body .node-grid-row:hover {
+    background: var(--overlay-hover);
+  }
+
+  /* Numeric columns read far better right-aligned and tabular. */
+  .node-grid .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Search ──────────────────────────────────────────────────────────────── */
+  /* Hide the UA's own clear button — we render a themed one. */
+  .search-input::-webkit-search-cancel-button,
+  .search-input::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}

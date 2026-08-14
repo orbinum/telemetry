@@ -1,0 +1,35 @@
+/** Chain header: name, connection status, and the four headline numbers. */
+
+import { StatCard, StatCardRow } from "./ui/StatCard";
+import { cn } from "./ui/cn";
+import { useChain, useFeedStatus } from "../../stores/feedStore";
+import { formatHeight, formatMs, formatNumber } from "../../utils/format";
+
+export function ChainStats() {
+  const chain = useChain();
+  const status = useFeedStatus();
+
+  return (
+    <div className="mb-6">
+      <div className="mb-4 flex items-center gap-3">
+        <h1 className="wordmark text-2xl">{chain?.label || "Orbinum Telemetry"}</h1>
+        <span
+          className={cn(
+            "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] uppercase tracking-[0.12em]",
+            status === "live" ? "bg-success-tint text-success" : "bg-warning-tint text-warning",
+          )}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+          {status}
+        </span>
+      </div>
+
+      <StatCardRow>
+        <StatCard label="Nodes" value={formatNumber(chain?.nodeCount)} />
+        <StatCard label="Best block" value={formatHeight(chain?.best)} />
+        <StatCard label="Finalized" value={formatHeight(chain?.finalized)} />
+        <StatCard label="Avg block time" value={formatMs(chain?.averageBlockTime)} />
+      </StatCardRow>
+    </div>
+  );
+}

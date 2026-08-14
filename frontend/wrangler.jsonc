@@ -1,0 +1,10 @@
+/**
+ * Cloudflare Pages config — lets `pnpm deploy` publish from the CLI and keeps
+ * the project settings in the repo. Production domain: telemetry.orbinum.network
+ * (attached to the Pages project in the dashboard).
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "orbinum-telemetry-front",
+  "pages_build_output_dir": "./dist",
+}
