@@ -70,10 +70,14 @@ versions in any meaningful sense.
 2. To cut a release, rename that heading to `## [x.y.z] - YYYY-MM-DD`, add a
    fresh empty `## [Unreleased]` above it, update the link definitions at the
    bottom, and bump `version` in the root `package.json`.
-3. Push to `main`. [`release.yml`](.github/workflows/release.yml) re-runs the
-   full check gate, tags `vx.y.z`, and publishes a GitHub Release whose notes
-   are that CHANGELOG section, with the built UI and the worker config
-   attached as assets.
+3. Push to `main`. [`release.yml`](.github/workflows/release.yml) verifies the
+   version, **calls `ci.yml` on that same commit**, and only then tags
+   `vx.y.z` and publishes a GitHub Release whose notes are that CHANGELOG
+   section, with the built UI and the worker config attached as assets.
+
+Nothing is tagged or published unless CI is green: the release invokes the CI
+workflow as a reusable workflow rather than repeating its steps, so the two
+gates cannot drift apart.
 
 Only a version bump releases. The workflow watches the root `package.json`,
 refuses to run without a matching CHANGELOG section, and stops if the tag

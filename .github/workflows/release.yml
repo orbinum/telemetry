@@ -19,25 +19,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build, Tag and Release
+  verify:
+    name: Verify version
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      should_release: ${{ steps.check_tag.outputs.tag_exists == 'false' }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
 
       - name: Extract version from package.json
         id: version
@@ -72,38 +66,51 @@ jobs:
           fi
           echo "✅ CHANGELOG entry found."
 
-      # A release must not ship code that would fail CI, so the whole gate runs
-      # again here rather than trusting a green run on an older commit.
+  # The same jobs a push to main runs, on this exact commit. Reused rather than
+  # copied, so the release gate cannot drift from CI.
+  ci:
+    name: CI
+    needs: verify
+    if: needs.verify.outputs.should_release == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  # Only runs once `ci` has succeeded on this commit — nothing is tagged or
+  # published before the gate is green.
+  publish:
+    name: Build, Tag and Release
+    needs: [verify, ci]
+    if: needs.verify.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Install dependencies
-        if: steps.check_tag.outputs.tag_exists == 'false'
         run: pnpm install:all
 
-      - name: Lint
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        run: pnpm lint
-
-      - name: Format check
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        run: pnpm fmt:check
-
-      - name: Typecheck
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        run: pnpm typecheck
-
-      - name: Test
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        run: pnpm test
-
+      # CI already ran every check; this build only produces the artifacts the
+      # release attaches.
       - name: Build
-        if: steps.check_tag.outputs.tag_exists == 'false'
         run: pnpm build
 
       # The frontend bundle is what Pages serves; attaching it makes a release
       # reproducible and lets an operator diff or roll back without rebuilding.
       - name: Package release assets
-        if: steps.check_tag.outputs.tag_exists == 'false'
         run: |
-          TAG=${{ steps.version.outputs.tag }}
+          TAG=${{ needs.verify.outputs.tag }}
           mkdir -p release
 
           tar -czf "release/orbinum-telemetry-frontend-${TAG}.tar.gz" -C frontend dist
@@ -117,12 +124,11 @@ jobs:
           cat "release/checksums-${TAG}.txt"
 
       - name: Create release notes
-        if: steps.check_tag.outputs.tag_exists == 'false'
         run: |
           # The section for the version being released, by exact heading —
           # matching "the first ## [" instead would pick up [Unreleased] and
           # produce empty notes.
-          awk -v tag="## [${{ steps.version.outputs.version }}]" '
+          awk -v tag="## [${{ needs.verify.outputs.version }}]" '
             index($0, tag) == 1  { flag = 1; next }
             flag && /^## \[/     { exit }
             flag && /^\[[^]]+\]:/{ exit }   # link definitions end the section
@@ -130,7 +136,7 @@ jobs:
           ' CHANGELOG.md > release_notes_body.md
 
           {
-            echo "## ${{ steps.version.outputs.tag }}"
+            echo "## ${{ needs.verify.outputs.tag }}"
             echo ""
             if [ -s release_notes_body.md ]; then
               cat release_notes_body.md
@@ -147,25 +153,23 @@ jobs:
             echo ""
             echo "## Release Assets"
             echo ""
-            echo "- \`orbinum-telemetry-frontend-${{ steps.version.outputs.tag }}.tar.gz\` — built UI, as served by Pages"
-            echo "- \`orbinum-telemetry-worker-config-${{ steps.version.outputs.tag }}.tar.gz\` — wrangler config and binding types"
-            echo "- \`checksums-${{ steps.version.outputs.tag }}.txt\` — SHA-256 checksums"
+            echo "- \`orbinum-telemetry-frontend-${{ needs.verify.outputs.tag }}.tar.gz\` — built UI, as served by Pages"
+            echo "- \`orbinum-telemetry-worker-config-${{ needs.verify.outputs.tag }}.tar.gz\` — wrangler config and binding types"
+            echo "- \`checksums-${{ needs.verify.outputs.tag }}.txt\` — SHA-256 checksums"
           } > release_notes.md
 
       - name: Create and push tag
-        if: steps.check_tag.outputs.tag_exists == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+          git tag -a "${{ needs.verify.outputs.tag }}" -m "Release ${{ needs.verify.outputs.tag }}"
+          git push origin "${{ needs.verify.outputs.tag }}"
 
       - name: Create GitHub Release
-        if: steps.check_tag.outputs.tag_exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: Release ${{ steps.version.outputs.tag }}
+          tag_name: ${{ needs.verify.outputs.tag }}
+          name: Release ${{ needs.verify.outputs.tag }}
           files: |
             release/*.tar.gz
             release/*.txt
