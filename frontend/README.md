@@ -1,34 +1,74 @@
-# React + TypeScript + Vite
+# Orbinum Telemetry — UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Live node list for `telemetry.orbinum.network`, on Cloudflare Pages.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
-
-Note: This will impact Vite dev & build performances.
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+pnpm dev              # vite on :5173
+pnpm check            # lint + typecheck + fmt + build + test
+pnpm deploy           # build + wrangler pages deploy
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+The UI needs a worker to read from. Start one with `pnpm -C ../backend dev`
+and point a node at it:
+
+```sh
+orbinum-node --dev --tmp --name my-node \
+  --telemetry-url "ws://127.0.0.1:8787/submit/ 1"
+```
+
+## Networks
+
+The switcher offers Testnet, Mainnet and Devnet. Testnet and mainnet are
+served by the deployed worker; **devnet reads from a worker on your own
+machine**, because a `--dev` chain gets a fresh genesis on every restart and
+could never be in the deployed worker's allowlist.
+
+A network only appears once its genesis hash is configured — an unconfigured
+tab could only ever fail, since the worker rejects chains it does not know.
+Devnet is the exception: its chain is discovered at runtime, so it is always
+offered.
+
+| Variable               | Purpose                                             |
+| ---------------------- | --------------------------------------------------- |
+| `VITE_API_BASE`        | Deployed worker. Defaults to `telemetry.orbinum.io` |
+| `VITE_DEVNET_API_BASE` | Local worker for devnet. Defaults to `:8787`        |
+| `VITE_TESTNET_GENESIS` | Testnet genesis hash; the tab is hidden without it  |
+| `VITE_MAINNET_GENESIS` | Mainnet genesis hash; fill in at launch             |
+
+Set them in `.env.production` (committed) or `.env.local` (ignored). See
+[`.env.example`](.env.example).
+
+## Structure
+
+| Directory       | Holds                                                           |
+| --------------- | --------------------------------------------------------------- |
+| `presentation/` | Components, pages, layouts, router. `components/ui/` is generic |
+| `stores/`       | zustand state: feed, network, theme                             |
+| `domain/`       | Pure logic — ordering, filtering, statistics. No React          |
+| `services/`     | The feed WebSocket client and the chain directory fetch         |
+| `config/`       | Which networks exist and which worker serves each               |
+| `utils/`        | Formatting and typed localStorage access                        |
+| `styles/`       | Design tokens shared with the rest of the workspace             |
+
+`tests/` mirrors `src/`; 55 tests, run with `pnpm test`.
+
+## Rendering at scale
+
+A chain can report hundreds of nodes at roughly 1 Hz each, which is enough to
+make a naive React app unusable. Three things keep it at 60 fps:
+
+- **The socket lives outside React** ([`services/feed-client.ts`](src/services/feed-client.ts)).
+  It writes into a plain `Map` and flushes once per animation frame, so a
+  burst of messages becomes one commit rather than one per message.
+- **Rows subscribe individually.** `useNode(id)` reads a single entry, so a
+  delta for one node re-renders one row.
+- **The table is virtualized** with `@tanstack/react-virtual`: the DOM holds
+  ~29 rows whether the chain has 50 nodes or 500.
+
+Filtering and sorting run on flush, never in render — see
+[`domain/node-order.ts`](src/domain/node-order.ts).
+
+The node table is a CSS grid rather than a `<table>`: virtualized rows are
+absolutely positioned, which table layout cannot express. Row height is fixed
+in `--node-row-height` and mirrored by `ROW_HEIGHT` in `NodeTable.tsx`; a
+mismatch leaves the container scrollable even with a single row.
