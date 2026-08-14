@@ -1,0 +1,20 @@
+{
+  "name": "orbinum-telemetry",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:back": "pnpm -C backend dev",
+    "dev:front": "pnpm -C frontend dev",
+    "setup": "pnpm -C backend install && pnpm -C frontend install",
+    "lint": "pnpm -C backend lint && pnpm -C frontend lint",
+    "fmt": "pnpm -C backend fmt && pnpm -C frontend fmt",
+    "fmt:check": "pnpm -C backend fmt:check && pnpm -C frontend fmt:check",
+    "typecheck": "pnpm -C backend typecheck && pnpm -C frontend typecheck",
+    "test": "pnpm -C backend test && pnpm -C frontend test",
+    "build": "pnpm -C backend build && pnpm -C frontend build",
+    "check": "pnpm -C backend check && pnpm -C frontend check",
+    "deploy:back": "pnpm -C backend deploy",
+    "deploy:front": "pnpm -C frontend deploy"
+  },
+  "packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be"
+}
