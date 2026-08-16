@@ -8,7 +8,7 @@
 import { Outlet } from "react-router";
 import { ChainPicker } from "../components/ChainPicker";
 import { ChainStats } from "../components/ChainStats";
-import { EmptyState, ErrorState } from "../components/ui/EmptyState";
+import { EmptyState, ErrorState, LoadingState } from "../components/ui/EmptyState";
 import { TabLink } from "../components/ui/Tab";
 import { useChainFeed } from "../hooks/useChainFeed";
 import { useChains, useChainsError, useChainsLoading, useNetwork } from "../../stores/networkStore";
@@ -62,7 +62,15 @@ export function ChainLayout() {
         </div>
       )}
 
-      {noChains ? (
+      {/* Order matters: the directory request has to settle before its result
+          means anything. Rendering the Outlet while it is in flight shows the
+          node list's own "no nodes reporting yet" — a claim about the network
+          made before anyone asked it. */}
+      {loading && chains.length === 0 ? (
+        <LoadingState>
+          Looking for chains on the {network.label.toLowerCase()} service…
+        </LoadingState>
+      ) : noChains ? (
         <EmptyState hint={network.emptyHint}>
           No chains are reporting to the {network.label.toLowerCase()} telemetry service yet.
         </EmptyState>

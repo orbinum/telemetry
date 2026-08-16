@@ -69,6 +69,9 @@
     /* Tall enough for the tallest cell content (the 20px copy button plus
        padding). Keep in sync with ROW_HEIGHT in NodeTable.tsx. */
     --node-row-height: 36px;
+    /* Everything stacked above the list: title, stat cards, tabs, the count
+       and search row. Read by .node-grid-scroll. */
+    --node-chrome: 22rem;
     font-size: 0.8125rem;
     min-width: 72rem;
   }
@@ -82,6 +85,14 @@
     grid-template-columns: var(--node-columns);
     align-items: center;
     height: var(--node-row-height);
+  }
+
+  /* The list's own scroll area. The subtrahend is the chrome above it — page
+     header, search, stat cards — which stacks tighter on a narrow screen, so
+     the media queries below shrink it rather than leaving a phone with a
+     four-row list. The floor keeps the list usable on a short viewport. */
+  .node-grid-scroll {
+    max-height: max(18rem, 100dvh - var(--node-chrome, 22rem));
   }
 
   .node-grid-head {
@@ -137,6 +148,73 @@
   .node-grid .num {
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Narrow screens ──────────────────────────────────────────────────────── */
+  /* Twelve columns need ~72rem, so on a phone the table is one long sideways
+     scroll where every row starts with the same two fields. Instead of asking
+     for that gesture, drop the columns a small screen cannot afford and keep
+     the ones that answer "is my node keeping up": name, best block, and how
+     long ago it moved.
+
+     Hiding is `display: none` on both the header cell and the row cell at the
+     same nth-child index — the two share one template, so they can only stay
+     aligned if they hide in lockstep. The column count in `--node-columns`
+     must match what remains visible.
+
+     Sorting by a hidden column survives: the sort key lives in the store, so a
+     choice made on a desktop still holds when the same page is opened narrow.
+     What is lost is the ability to *change* to one of those sorts, which is a
+     fair trade for a header that fits. */
+  @media (width < 64rem) {
+    .node-grid {
+      /* name | best | last block */
+      --node-columns: minmax(8rem, 1.6fr) 6rem 6.5rem;
+      min-width: 0;
+    }
+
+    /* The stat cards wrap from one row of four to two rows of two below `sm`,
+       so the chrome above the list gets *taller* exactly where the viewport is
+       shortest. Above `sm` they are back on one row and this does not apply. */
+    @media (width < 40rem) {
+      .node-grid {
+        --node-chrome: 26rem;
+      }
+    }
+
+    /* implementation, validator, peers, txs, hash, block time, propagation,
+       finalized, location */
+    .node-grid-row > *:nth-child(2),
+    .node-grid-row > *:nth-child(3),
+    .node-grid-row > *:nth-child(4),
+    .node-grid-row > *:nth-child(5),
+    .node-grid-row > *:nth-child(7),
+    .node-grid-row > *:nth-child(8),
+    .node-grid-row > *:nth-child(9),
+    .node-grid-row > *:nth-child(10),
+    .node-grid-row > *:nth-child(12) {
+      display: none;
+    }
+  }
+
+  /* Between phone and desktop there is room for the identity and health
+     columns, but not for the diagnostic ones. */
+  @media (64rem <= width < 80rem) {
+    .node-grid {
+      /* name | implementation | peers | best | block time | last block */
+      --node-columns: minmax(9rem, 1.4fr) minmax(8rem, 1.2fr) 5rem 6rem 7rem 7rem;
+      min-width: 0;
+    }
+
+    /* validator, txs, hash, propagation, finalized, location */
+    .node-grid-row > *:nth-child(3),
+    .node-grid-row > *:nth-child(5),
+    .node-grid-row > *:nth-child(7),
+    .node-grid-row > *:nth-child(9),
+    .node-grid-row > *:nth-child(10),
+    .node-grid-row > *:nth-child(12) {
+      display: none;
+    }
   }
 
   /* ── Search ──────────────────────────────────────────────────────────────── */

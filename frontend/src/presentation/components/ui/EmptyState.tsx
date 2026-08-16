@@ -24,6 +24,29 @@ export function EmptyState({ children, hint }: EmptyStateProps) {
   );
 }
 
+/**
+ * The same slot before the answer arrives. Without it the page renders its
+ * empty state while the request is still in flight, and "no nodes reporting"
+ * is read as a fact about the network rather than about the wait.
+ *
+ * Deliberately not a skeleton of the table: the row count is unknown until the
+ * feed answers, so a skeleton would invent a shape and then replace it.
+ */
+export function LoadingState({ children }: { children?: ReactNode }) {
+  return (
+    <div className="glass-card px-4 py-10 text-center">
+      <p className="text-sm text-muted">
+        <span
+          className="mr-2 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent align-[-1px]"
+          // Decorative: the text beside it already says what is happening.
+          aria-hidden="true"
+        />
+        {children ?? "Loading…"}
+      </p>
+    </div>
+  );
+}
+
 /** An error the user cannot fix by waiting, with the same optional hint. */
 export function ErrorState({ children, hint }: EmptyStateProps) {
   return (

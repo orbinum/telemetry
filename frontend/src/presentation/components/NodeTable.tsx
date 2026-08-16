@@ -39,11 +39,7 @@ export function NodeTable() {
     <div className="glass-card overflow-x-auto">
       <div className="node-grid">
         <NodeTableHead />
-        <div
-          ref={scrollRef}
-          className="node-grid-body overflow-y-auto"
-          style={{ maxHeight: "calc(100dvh - 22rem)" }}
-        >
+        <div ref={scrollRef} className="node-grid-body overflow-y-auto node-grid-scroll">
           <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((item) => (
               <NodeRow

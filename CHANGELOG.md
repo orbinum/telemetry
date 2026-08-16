@@ -12,6 +12,33 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-08-16
+
+**The UI on a phone.** The node table assumed a desktop viewport, and both of
+the page's waits were rendered as emptiness — two ways of showing something
+untrue to whoever opened it on the smaller screen.
+
+### Added
+
+- **Loading states while the page has no answer yet.** The chain directory and
+  the feed socket both take a moment, and until now the page filled that gap
+  with its empty state — "No nodes reporting yet" was shown before anyone had
+  asked. The two waits now say so, and the empty state means what it says.
+  Switching networks keeps the current list on screen instead of flashing a
+  spinner over it.
+
+### Fixed
+
+- **The node table was unusable on a phone.** Twelve columns held a
+  `min-width` of 72rem, so a narrow screen got one long sideways scroll where
+  every row opened with the same two fields. The table now drops to three
+  columns below 64rem — name, best block, last block, which is what "is my
+  node keeping up" actually needs — and to six between 64 and 80rem. The list
+  height also stopped assuming desktop chrome: the stat cards wrap to two rows
+  below 40rem, making the header taller exactly where the viewport is
+  shortest, so the space reserved for it is now a variable rather than a fixed
+  22rem.
+
 ## [0.2.2] - 2026-08-16
 
 ### Fixed
@@ -173,7 +200,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/orbinum/telemetry/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/orbinum/telemetry/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/orbinum/telemetry/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/orbinum/telemetry/compare/v0.1.0...v0.2.0
