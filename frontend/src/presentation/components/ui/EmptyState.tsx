@@ -3,8 +3,8 @@
  *
  * "Nothing to show" is rarely the end of the story — the node list is empty
  * because a filter hides everything, or because no worker answered, or
- * because devnet needs a command run first. The optional `hint` is where that
- * next step goes, so an empty screen is never a dead end.
+ * because no node is reporting yet. The optional `hint` is where that next
+ * step goes, so an empty screen is never a dead end.
  */
 
 import type { ReactNode } from "react";

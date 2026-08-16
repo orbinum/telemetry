@@ -1,9 +1,9 @@
 /**
  * Picks between the chains one network reports.
  *
- * Hidden with a single chain, which is the normal case for testnet and
- * mainnet — the allowlist keeps each to one — and only useful on devnet,
- * where a local worker may have seen several.
+ * Hidden with a single chain, which is the normal case — the allowlist keeps
+ * each network to one. It earns its place on a worker whose TELEMETRY_CHAINS
+ * lists several, such as a fork under test.
  */
 
 import { TabLink } from "./ui/Tab";

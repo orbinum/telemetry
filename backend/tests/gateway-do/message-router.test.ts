@@ -91,14 +91,17 @@ describe("system.connected", () => {
     expect(record).not.toHaveBeenCalled();
   });
 
-  it("accepts any chain when the allowlist is empty (local dev)", async () => {
+  it("rejects every chain when the allowlist is empty", async () => {
+    // Fail-closed: missing or mistyped vars serve nobody rather than opening
+    // ingest to every chain on the internet. Nothing is allocated either.
     const router = makeRouter(new Set());
     const conn = fakeConnection();
 
     await router.route(conn, connected(1, FOREIGN));
 
-    expect(conn.close).not.toHaveBeenCalled();
-    expect(nodeConnected).toHaveBeenCalled();
+    expect(conn.close).toHaveBeenCalledWith(expect.any(Number), "chain not allowed");
+    expect(nodeConnected).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
   });
 
   it("closes the connection past the node cap", async () => {

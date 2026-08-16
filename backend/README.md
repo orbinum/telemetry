@@ -60,15 +60,15 @@ invalid entries are ignored rather than crashing the worker.
 | `TELEMETRY_MAINNET_GENESIS` | Mainnet genesis hash — empty until mainnet launches |
 | `TELEMETRY_CHAINS`          | Comma-separated extras, for a fork under test       |
 
-**Leaving all three empty means the worker accepts nodes from any chain.**
-That is deliberate — a `--dev` node gets a fresh genesis on every restart, so
-local development would be impossible otherwise — and the `GatewayDO` logs a
-warning at startup when it happens. Production must set at least the testnet
-hash.
+**The allowlist is fail-closed: a chain that is not listed is rejected, and
+leaving all three empty serves nobody.** `GatewayDO` logs an error at startup
+in that case. There is no accept-everything mode — it would be one stray var
+away from letting any chain on the internet spawn a Durable Object here.
 
-Devnet is not configured here. Its genesis changes on every node restart, so
-it could never be allowlisted; a developer runs their own worker instead
-(`pnpm dev`, empty allowlist) and the UI's Devnet tab points at it.
+To watch your own node, put its genesis hash in `TELEMETRY_CHAINS` in
+`.dev.vars` and run `pnpm dev`. A `--dev` chain mints a fresh genesis whenever
+you wipe it, so that hash changes and the worker needs a restart; a persistent
+local chain avoids the churn.
 
 Genesis hashes belong in config, not in code: testnet's has already changed
 once (the value in `node-deploy/docs/TOPOLOGY.md` is stale). Read the current
@@ -140,5 +140,6 @@ honest node of propagation numbers and rendering `1e+308` to every visitor.
 
 `GET /chains` only lists chains active in the last 10 minutes, and expired
 rows are deleted on read. Without it the picker accumulates a dead entry for
-every chain the worker ever saw — one per throwaway devnet on a developer's
-machine, each looking as current as the chain they are actually working on.
+every chain the worker ever saw — one per throwaway local chain on a
+developer's machine, each looking as current as the one they are actually
+working on.

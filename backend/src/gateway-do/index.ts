@@ -38,11 +38,9 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
 
     const allowedChains = parseAllowedChains(env);
     if (allowedChains.size === 0) {
-      // Loud on purpose: in production this means the allowlist is missing
-      // and any chain on the internet can spawn a ChainDO here.
-      console.warn(
+      console.error(
         "no genesis allowlist configured (TELEMETRY_TESTNET_GENESIS / " +
-          "TELEMETRY_MAINNET_GENESIS / TELEMETRY_CHAINS) — accepting nodes from ANY chain",
+          "TELEMETRY_MAINNET_GENESIS / TELEMETRY_CHAINS) — rejecting ALL nodes",
       );
     }
 

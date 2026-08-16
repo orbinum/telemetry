@@ -11,42 +11,30 @@
  * ingest endpoint from spawning a Durable Object for any chain on the
  * internet.
  *
- * Devnet cannot live on the deployed worker: an ephemeral `--dev` chain gets
- * a fresh genesis on every restart, so it could never be allowlisted. A
- * developer runs their own worker instead (`pnpm dev:back`), where an empty
- * allowlist accepts every chain, and points their node at it:
- *
- *   orbinum-node --dev --telemetry-url "ws://localhost:8787/submit/ 1"
- *
- * Note this is the *worker's* port, not the node's RPC port (9944). A node
- * does not serve telemetry on its RPC port — that speaks JSON-RPC, and it
- * only knows its own view, so it has none of the cross-node numbers
- * (propagation, block time across the network) this UI exists to show.
+ * There is deliberately no devnet entry. The deployed worker rejects a `--dev`
+ * chain outright, and its genesis changes on every restart, so no fixed entry
+ * could ever match one. A developer who wants to watch their own node runs
+ * their own worker with that chain's genesis in `TELEMETRY_CHAINS`, and points
+ * this UI at it with `VITE_API_BASE=http://localhost:8787`.
  */
 
 import { STORAGE_KEYS, readStored, writeStored } from "../utils/storage";
 
-export type NetworkId = "testnet" | "mainnet" | "devnet";
+export type NetworkId = "testnet" | "mainnet";
 
 export interface Network {
   id: NetworkId;
   label: string;
   /** Base URL of the telemetry worker serving this network. */
   apiBase: string;
-  /**
-   * Genesis hash this network's chain reports, when it is known ahead of
-   * time. Devnet has none: its genesis changes on every node restart.
-   */
+  /** Genesis hash this network's chain reports; absent hides the network. */
   genesisHash?: string;
   /** Shown when the network has no nodes, to explain what to do about it. */
   emptyHint?: string;
 }
 
-/** Deployed worker, overridable at build time for staging. */
+/** Deployed worker, overridable at build time for staging or a local worker. */
 const PRODUCTION_API = import.meta.env.VITE_API_BASE ?? "https://telemetry.orbinum.io";
-
-/** A developer's own `wrangler dev`. */
-const LOCAL_API = import.meta.env.VITE_DEVNET_API_BASE ?? "http://localhost:8787";
 
 const GENESIS_RE = /^0x[0-9a-f]{64}$/i;
 
@@ -73,33 +61,26 @@ export const ALL_NETWORKS: Network[] = [
     apiBase: PRODUCTION_API,
     genesisHash: configuredGenesis(import.meta.env.VITE_MAINNET_GENESIS),
   },
-  {
-    id: "devnet",
-    label: "Devnet",
-    apiBase: LOCAL_API,
-    // Deliberately no genesisHash: a --dev chain is ephemeral, so devnet is
-    // available whenever a local worker is, and lists whatever it reports.
-    emptyHint:
-      "Devnet reads from a telemetry worker on your own machine. Start it with " +
-      "`pnpm dev:back`, then run your node with " +
-      '`--telemetry-url "ws://localhost:8787/submit/ 1"`.',
-  },
 ];
 
 /**
- * A network is offered when it can actually show something: a known genesis
- * for the fixed chains, and always for devnet, whose chain is discovered at
- * runtime from the local worker.
+ * A network is offered when it can actually show something: the worker's
+ * allowlist rejects chains it does not know, so an unconfigured genesis means
+ * a tab with nothing behind it.
  */
 export function isNetworkAvailable(network: Network): boolean {
-  return network.id === "devnet" || network.genesisHash !== undefined;
+  return network.genesisHash !== undefined;
 }
 
 /** The networks the UI offers. Empty is possible and handled by the UI. */
 export const NETWORKS: Network[] = ALL_NETWORKS.filter(isNetworkAvailable);
 
-/** The first available network; devnet is always there as a fallback. */
-export const DEFAULT_NETWORK: NetworkId = NETWORKS[0]?.id ?? "devnet";
+/**
+ * The first available network. Falls back to testnet for a build that
+ * configured no genesis at all — the UI shows that tab empty, which is the
+ * honest outcome of a build with nothing to point at.
+ */
+export const DEFAULT_NETWORK: NetworkId = NETWORKS[0]?.id ?? "testnet";
 
 export function getNetwork(id: NetworkId): Network | undefined {
   return NETWORKS.find((n) => n.id === id);

@@ -18,22 +18,22 @@ orbinum-node --dev --tmp --name my-node \
 
 ## Networks
 
-The switcher offers Testnet, Mainnet and Devnet. Testnet and mainnet are
-served by the deployed worker; **devnet reads from a worker on your own
-machine**, because a `--dev` chain gets a fresh genesis on every restart and
-could never be in the deployed worker's allowlist.
+The switcher offers Testnet and Mainnet, both served by the deployed worker.
 
 A network only appears once its genesis hash is configured — an unconfigured
 tab could only ever fail, since the worker rejects chains it does not know.
-Devnet is the exception: its chain is discovered at runtime, so it is always
-offered.
 
-| Variable               | Purpose                                             |
-| ---------------------- | --------------------------------------------------- |
-| `VITE_API_BASE`        | Deployed worker. Defaults to `telemetry.orbinum.io` |
-| `VITE_DEVNET_API_BASE` | Local worker for devnet. Defaults to `:8787`        |
-| `VITE_TESTNET_GENESIS` | Testnet genesis hash; the tab is hidden without it  |
-| `VITE_MAINNET_GENESIS` | Mainnet genesis hash; fill in at launch             |
+**There is no devnet tab.** A `--dev` chain gets a fresh genesis on every
+restart, so it can never be in an allowlist, and the deployed worker rejects
+it. To watch your own node, run your own worker with that chain's genesis in
+`TELEMETRY_CHAINS` (see the [backend README](../backend/README.md)) and point
+this UI at it with `VITE_API_BASE=http://localhost:8787`.
+
+| Variable               | Purpose                                              |
+| ---------------------- | ---------------------------------------------------- |
+| `VITE_API_BASE`        | Telemetry worker. Defaults to `telemetry.orbinum.io` |
+| `VITE_TESTNET_GENESIS` | Testnet genesis hash; the tab is hidden without it   |
+| `VITE_MAINNET_GENESIS` | Mainnet genesis hash; fill in at launch              |
 
 Set them in `.env.production` (committed) or `.env.local` (ignored). See
 [`.env.example`](.env.example).

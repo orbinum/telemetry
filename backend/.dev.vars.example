@@ -1,10 +1,25 @@
 # Copy to .dev.vars for local development:  cp .dev.vars.example .dev.vars
 #
-# Empty means "accept every chain", which is the only thing that works against
-# `orbinum-node --dev`: that chain gets a fresh genesis hash on every restart,
-# so it can never appear in a fixed allowlist. wrangler dev reads this file and
-# it overrides the `vars` block in wrangler.jsonc, which holds the real testnet
-# hash for production.
+# The allowlist is fail-closed: a chain that is not listed here is rejected,
+# and an empty list serves nobody. There is no accept-everything mode — it
+# would be one stray var away from letting any chain on the internet spawn a
+# Durable Object on the deployed worker.
+#
+# To watch your own node, put its genesis hash in TELEMETRY_CHAINS. Read it
+# from the running node:
+#
+#   curl -s -H 'Content-Type: application/json' \
+#     -d '{"jsonrpc":"2.0","id":1,"method":"chain_getBlockHash","params":[0]}' \
+#     http://localhost:9944
+#
+# `--dev` mints a fresh genesis on every restart, so that hash changes whenever
+# you wipe the chain; paste the new one and restart `wrangler dev`. Running
+# against a persistent local chain (`--chain local`, a fixed base path) avoids
+# the churn.
+TELEMETRY_CHAINS=
+
+# wrangler dev reads this file and it overrides the `vars` block in
+# wrangler.jsonc, which holds the real testnet hash for production. Set this to
+# watch the live testnet from a local worker instead of your own chain.
 TELEMETRY_TESTNET_GENESIS=
 TELEMETRY_MAINNET_GENESIS=
-TELEMETRY_CHAINS=

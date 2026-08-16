@@ -1,6 +1,6 @@
 /**
  * Which network the UI is showing, and the chains that network's worker
- * reports. The choice persists, so a developer working on devnet does not
+ * reports. The choice persists, so someone watching one network does not
  * re-pick it on every reload.
  *
  * Switching networks resets the feed before anything else: leaving the

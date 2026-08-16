@@ -6,7 +6,7 @@ const MAINNET = "0x" + "22".repeat(32);
 const OTHER = "0x" + "11".repeat(32);
 
 describe("parseAllowedChains", () => {
-  it("is empty when nothing is configured, which means accept-all (local dev)", () => {
+  it("is empty when nothing is configured, which serves nobody", () => {
     expect(parseAllowedChains({}).size).toBe(0);
     expect(
       parseAllowedChains({
@@ -62,7 +62,18 @@ describe("isChainAllowed", () => {
     expect(isChainAllowed(new Set([TESTNET]), OTHER)).toBe(false);
   });
 
-  it("an empty allowlist accepts everything (local dev)", () => {
-    expect(isChainAllowed(new Set(), OTHER)).toBe(true);
+  it("an empty allowlist rejects everything — misconfiguration fails closed", () => {
+    // The opposite default would let any chain on the internet spawn a
+    // ChainDO the moment a var went missing or was mistyped.
+    expect(isChainAllowed(new Set(), OTHER)).toBe(false);
+    expect(isChainAllowed(new Set(), TESTNET)).toBe(false);
+  });
+
+  it("rejects a devnet chain, whose genesis can never be listed", () => {
+    // `--dev` mints a fresh genesis on every restart. Nothing accepts it on
+    // the deployed worker; a developer allowlists their own chain on their
+    // own worker instead.
+    const allowed = parseAllowedChains({ TELEMETRY_TESTNET_GENESIS: TESTNET });
+    expect(isChainAllowed(allowed, "0x" + "de".repeat(32))).toBe(false);
   });
 });

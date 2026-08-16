@@ -1,9 +1,9 @@
 /**
  * Chain directory fetch.
  *
- * The base URL is a parameter rather than a build-time constant: each network
- * is served by its own worker, and devnet's is on the developer's machine, so
- * which one to ask is only known at runtime.
+ * The base URL is a parameter rather than a build-time constant: the worker a
+ * network is served from moves with the build (a developer's own, a staging
+ * one), so which to ask is only known at runtime.
  */
 
 import type { ChainDirectoryEntry } from "../../../shared/protocol/feed";

@@ -12,6 +12,26 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Removed
+
+- **Devnet, entirely.** The UI no longer carries a Devnet network, and the
+  worker no longer has a mode that accepts it. A `--dev` chain mints a fresh
+  genesis on every restart, so it could never be allowlisted; the previous
+  arrangement leaned on "empty allowlist means accept everything", which put
+  the deployed worker one missing or mistyped variable away from accepting
+  every chain on the internet. A developer who wants to watch their own node
+  runs their own worker with that chain's genesis in `TELEMETRY_CHAINS`, and
+  points the UI at it with `VITE_API_BASE`.
+
+### Changed
+
+- **The genesis allowlist is fail-closed.** A chain that is not listed is
+  rejected, and an empty allowlist now serves nobody instead of serving
+  everybody; `GatewayDO` logs an error at startup when it ends up empty. A
+  misconfigured deployment is loudly useless rather than quietly open.
+- A stored `devnet` choice from an earlier visit falls back to an available
+  network instead of stranding the user on one that no longer exists.
+
 ## [0.1.0] - 2026-08-14
 
 **Orbinum's own telemetry, instead of a shared tenancy on telemetry.polkadot.io.**

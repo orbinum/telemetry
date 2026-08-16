@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ALL_NETWORKS,
+  DEFAULT_NETWORK,
   NETWORKS,
   getNetwork,
   isNetworkAvailable,
@@ -8,7 +9,7 @@ import {
   saveNetwork,
   wsBase,
 } from "../../src/config/networks";
-import type { Network } from "../../src/config/networks";
+import type { Network, NetworkId } from "../../src/config/networks";
 
 function stubStorage(initial: Record<string, string> = {}) {
   const store = new Map(Object.entries(initial));
@@ -39,10 +40,11 @@ describe("availability", () => {
     expect(isNetworkAvailable(network({ genesisHash: "0x" + "ab".repeat(32) }))).toBe(true);
   });
 
-  it("always offers devnet, whose chain is discovered at runtime", () => {
-    // A --dev chain gets a fresh genesis on every restart, so it can never be
-    // configured ahead of time.
-    expect(isNetworkAvailable(network({ id: "devnet", genesisHash: undefined }))).toBe(true);
+  it("knows no devnet at all", () => {
+    // The deployed worker rejects a --dev chain, whose genesis changes on
+    // every restart. A developer runs their own worker and allowlists that
+    // chain there instead of the UI carrying a tab for it.
+    expect(ALL_NETWORKS.some((n) => n.id === ("devnet" as NetworkId))).toBe(false);
   });
 
   it("rejects a malformed genesis rather than offering a broken tab", () => {
@@ -58,8 +60,8 @@ describe("availability", () => {
     expect(NETWORKS.length).toBeLessThanOrEqual(ALL_NETWORKS.length);
   });
 
-  it("knows all three networks even when some are hidden", () => {
-    expect(ALL_NETWORKS.map((n) => n.id)).toEqual(["testnet", "mainnet", "devnet"]);
+  it("knows both networks even when one is hidden", () => {
+    expect(ALL_NETWORKS.map((n) => n.id)).toEqual(["testnet", "mainnet"]);
   });
 });
 
@@ -70,21 +72,11 @@ describe("endpoints", () => {
     expect(testnet.apiBase).toBe(mainnet.apiBase);
   });
 
-  it("points devnet at a local worker, not at the deployed one", () => {
-    const devnet = ALL_NETWORKS.find((n) => n.id === "devnet")!;
-    const testnet = ALL_NETWORKS.find((n) => n.id === "testnet")!;
-    expect(devnet.apiBase).not.toBe(testnet.apiBase);
-    expect(devnet.apiBase).toMatch(/localhost/);
-  });
-
-  it("points devnet at the worker port, never at the node's RPC port", () => {
-    // 9944 is JSON-RPC: it does not speak telemetry, and a single node has
-    // none of the cross-node numbers this UI shows.
-    expect(ALL_NETWORKS.find((n) => n.id === "devnet")!.apiBase).not.toMatch(/9944/);
-  });
-
-  it("explains how to feed devnet when it is empty", () => {
-    expect(ALL_NETWORKS.find((n) => n.id === "devnet")!.emptyHint).toBeDefined();
+  it("points every network at the same worker, wherever it is", () => {
+    // One deploy serves both chains; the chain is a filter, not a second
+    // stack. VITE_API_BASE moves all of them together, at a developer's own
+    // worker or a staging one.
+    expect(new Set(ALL_NETWORKS.map((n) => n.apiBase)).size).toBe(1);
   });
 
   it("derives the websocket base from the http one", () => {
@@ -104,20 +96,24 @@ describe("endpoints", () => {
 describe("persistence", () => {
   it("round-trips an available network", () => {
     stubStorage();
-    saveNetwork("devnet");
-    expect(loadNetwork()).toBe("devnet");
+    const available = NETWORKS[0];
+    if (available === undefined) return; // a build with nothing configured
+    saveNetwork(available.id);
+    expect(loadNetwork()).toBe(available.id);
   });
 
   it("ignores a stored network that is no longer available", () => {
-    // e.g. mainnet was configured, then its genesis was removed.
+    // e.g. mainnet was configured, then its genesis was removed. Falls back to
+    // DEFAULT_NETWORK, which is an available one whenever the build has any.
     stubStorage({ "telemetry.network": "mainnet" });
-    const loaded = loadNetwork();
-    expect(NETWORKS.some((n) => n.id === loaded)).toBe(true);
+    expect(loadNetwork()).toBe(DEFAULT_NETWORK);
+    if (NETWORKS.length > 0) expect(NETWORKS.some((n) => n.id === loadNetwork())).toBe(true);
   });
 
   it("ignores a stored value that was never a network", () => {
     stubStorage({ "telemetry.network": "staging" });
-    expect(NETWORKS.some((n) => n.id === loadNetwork())).toBe(true);
+    expect(loadNetwork()).toBe(DEFAULT_NETWORK);
+    if (NETWORKS.length > 0) expect(NETWORKS.some((n) => n.id === loadNetwork())).toBe(true);
   });
 
   it("survives storage being unavailable", () => {
