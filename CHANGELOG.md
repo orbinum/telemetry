@@ -12,6 +12,27 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Added
+
+- **A release deploys itself.** Once the tag and the GitHub Release exist, CI
+  publishes the worker and then the UI. The worker goes first: it owns the
+  wire contract the UI compiles against, so a UI ahead of its worker is the
+  ordering that breaks. Needs `CLOUDFLARE_API_TOKEN` and
+  `CLOUDFLARE_ACCOUNT_ID` in the `production` environment, and both Cloudflare
+  projects disconnected from the repository — their own Git integrations built
+  on every push to `main`, ahead of CI and racing this deploy.
+
+### Fixed
+
+- **A push to `main` cancelled the CI run its own release was waiting on.**
+  Both fire on the same commit and the same ref, and the concurrency group
+  meant to separate them keyed on `github.event_name` — which a called
+  workflow inherits from its caller, so it read `push` in both cases and put
+  them in one group. The release gate then reported the cancelled run as
+  "Backend checks failed", pointing at a package that was never the problem.
+  The group now keys on `github.workflow`, and `all-checks` names a cancelled
+  or skipped job for what it is instead of calling it a failure.
+
 ## [0.2.0] - 2026-08-16
 
 **Devnet is gone, and the genesis allowlist no longer has an open mode.**

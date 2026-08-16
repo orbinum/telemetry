@@ -7,8 +7,16 @@ on:
     branches: [main, develop]
   workflow_call:
 
+# `github.workflow` is the *calling* workflow's name — "CI" on a direct push,
+# "Release" when release.yml calls this one. Keying on it is what keeps a push
+# to main from cancelling the very run the release gate is waiting on: both
+# fire on the same commit and the same ref, so any group they share makes one
+# cancel the other, and the survivor reports "cancelled" as a failure.
+#
+# `github.event_name` cannot do this job: a called workflow inherits the
+# caller's event, so it reads "push" in both cases.
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event_name == 'workflow_call' && github.run_id || 'push' }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -116,10 +124,15 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     steps:
+      # The branch name goes through the environment, never into the script
+      # body: interpolating it inline lets a branch named `$(...)` run commands
+      # on the runner, and anyone opening a PR chooses that name.
       - name: Check head branch
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [ "${{ github.head_ref }}" != "develop" ]; then
-            echo "❌ PRs to main must come from 'develop', not '${{ github.head_ref }}'."
+          if [ "$HEAD_REF" != "develop" ]; then
+            echo "❌ PRs to main must come from 'develop', not '$HEAD_REF'."
             exit 1
           fi
           echo "✅ PR source is 'develop'."
@@ -130,14 +143,21 @@ jobs:
     needs: [backend, frontend]
     if: always()
     steps:
+      # Reports the actual result, not just "failed": a cancelled job means
+      # something cancelled this run, which is a very different bug from a
+      # test going red, and saying "checks failed" for it sends whoever reads
+      # this straight to the wrong place.
       - name: Check status
         run: |
-          if [ "${{ needs.backend.result }}" != "success" ]; then
-            echo "❌ Backend checks failed."
-            exit 1
-          fi
-          if [ "${{ needs.frontend.result }}" != "success" ]; then
-            echo "❌ Frontend checks failed."
-            exit 1
-          fi
-          echo "✅ All checks passed."
+          status=0
+          for pkg in backend:${{ needs.backend.result }} frontend:${{ needs.frontend.result }}; do
+            name=${pkg%%:*}
+            result=${pkg#*:}
+            case "$result" in
+              success)   echo "✅ ${name}: passed." ;;
+              cancelled) echo "::error::${name} was cancelled — another run superseded this one."; status=1 ;;
+              skipped)   echo "::error::${name} never ran."; status=1 ;;
+              *)         echo "::error::${name} checks failed (${result})."; status=1 ;;
+            esac
+          done
+          exit $status

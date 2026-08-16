@@ -37,8 +37,8 @@ jobs:
         id: version
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 Version: $VERSION"
 
       # package.json also changes when a script is edited, so the path filter
@@ -49,10 +49,10 @@ jobs:
         run: |
           if git rev-parse "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
             echo "⚠️  Tag ${{ steps.version.outputs.tag }} already exists — nothing to release."
-            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "✅ Tag ${{ steps.version.outputs.tag }} is new."
-            echo "tag_exists=false" >> $GITHUB_OUTPUT
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       # A release whose notes would be empty is a mistake, not a release: the
@@ -179,3 +179,50 @@ jobs:
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Deploys only what a tagged release produced: `needs` reaches back through
+  # publish → ci → verify, so nothing reaches Cloudflare until every check on
+  # this exact commit is green and the tag exists.
+  #
+  # The worker goes first. It owns the wire contract the UI compiles against,
+  # so a UI serving a payload its worker does not yet send is the one ordering
+  # that breaks; the reverse merely delays a feature.
+  deploy:
+    name: Deploy to Cloudflare
+    needs: [verify, ci, publish]
+    if: needs.verify.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: pnpm install:all
+
+      - name: Deploy worker
+        run: pnpm deploy:back
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # `--branch main` is what marks this a production deploy. Without a Git
+      # integration Pages has no branch to infer, and an unmarked deploy lands
+      # as a preview: a green run that never reaches the live domain.
+      - name: Deploy Pages
+        working-directory: frontend
+        run: pnpm build && pnpm exec wrangler pages deploy --branch main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
