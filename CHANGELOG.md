@@ -12,6 +12,17 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-16
+
+### Fixed
+
+- **The deploy step never ran a deploy.** `pnpm -C backend deploy` resolves to
+  pnpm's own `deploy` command — which publishes a workspace and knows nothing
+  about the script of the same name — so the job died on
+  `ERR_PNPM_CANNOT_DEPLOY` before wrangler was ever invoked. Both root scripts
+  now say `run deploy` explicitly. 0.2.1 tagged and published without
+  deploying; this release carries it to Cloudflare.
+
 ## [0.2.1] - 2026-08-16
 
 **The release pipeline reaches Cloudflare.** 0.2.0 tagged and published but
@@ -162,7 +173,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/orbinum/telemetry/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/orbinum/telemetry/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/orbinum/telemetry/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/orbinum/telemetry/releases/tag/v0.1.0
