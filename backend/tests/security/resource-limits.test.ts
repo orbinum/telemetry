@@ -99,12 +99,12 @@ describe("state is reclaimed", () => {
 
   it("the route table forgets a connection entirely", () => {
     const routes = new RouteTable();
-    for (let id = 1; id <= MAX_NODES_PER_CONNECTION; id++) routes.register(3, id, GENESIS);
-    expect(routes.nodeCount(3)).toBe(MAX_NODES_PER_CONNECTION);
+    for (let id = 1; id <= MAX_NODES_PER_CONNECTION; id++) routes.register("3", id, GENESIS);
+    expect(routes.nodeCount("3")).toBe(MAX_NODES_PER_CONNECTION);
 
-    routes.dropConnection(3);
-    expect(routes.nodeCount(3)).toBe(0);
-    expect(routes.resolve(3, 1)).toBeUndefined();
+    routes.dropConnection("3");
+    expect(routes.nodeCount("3")).toBe(0);
+    expect(routes.resolve("3", 1)).toBeUndefined();
   });
 
   it("silent nodes are reaped, so a churning attacker cannot accumulate state", () => {

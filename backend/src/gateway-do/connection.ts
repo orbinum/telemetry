@@ -13,7 +13,17 @@ import type { NodeGeo } from "../domain/node-state";
 import type { SystemConnectedMessage } from "../protocol/node";
 
 export class NodeConnection {
-  readonly id: number;
+  /**
+   * Identifies this connection *across gateways*, not just within one.
+   *
+   * Node keys are built from it and travel to a ChainDO, which pools the
+   * connections of all four gateway partitions into one table. A per-gateway
+   * counter therefore collides: partition 0's first socket and partition 1's
+   * first socket both claim `1:1`, and whichever reports last silently
+   * replaces the other — the chain shows four nodes out of six, and fixing one
+   * node's config makes a different one vanish.
+   */
+  readonly id: string;
   readonly geo?: NodeGeo;
   private readonly socket: WebSocket;
   private readonly bytes = new RollingTotal(BYTE_BUDGET_WINDOW_MS);
@@ -34,7 +44,7 @@ export class NodeConnection {
 
   private closed = false;
 
-  constructor(id: number, socket: WebSocket, geo: NodeGeo | undefined) {
+  constructor(id: string, socket: WebSocket, geo: NodeGeo | undefined) {
     this.id = id;
     this.socket = socket;
     this.geo = geo;

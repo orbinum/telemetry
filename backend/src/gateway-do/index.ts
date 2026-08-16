@@ -32,9 +32,17 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
   private readonly router: MessageRouter;
   private nextConnId = 1;
 
+  /**
+   * This partition's half of a connection id. Node keys reach a ChainDO that
+   * pools every gateway's connections, so the counter alone is ambiguous —
+   * see NodeConnection.id.
+   */
+  private readonly idPrefix: string;
+
   constructor(ctx: DurableObjectState, env: CloudflareBindings) {
     super(ctx, env);
     this.directory = new ChainDirectory(ctx.storage.sql);
+    this.idPrefix = ctx.id.toString();
 
     const allowedChains = parseAllowedChains(env);
     if (allowedChains.size === 0) {
@@ -78,7 +86,11 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
     const [client, server] = [pair[0], pair[1]];
 
     server.accept();
-    const conn = new NodeConnection(this.nextConnId++, server, parseGeoHeader(request.headers));
+    const conn = new NodeConnection(
+      `${this.idPrefix}-${this.nextConnId++}`,
+      server,
+      parseGeoHeader(request.headers),
+    );
 
     server.addEventListener("message", (event) => {
       const text = frameToText(event.data);

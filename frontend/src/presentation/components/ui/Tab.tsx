@@ -14,7 +14,9 @@ const BASE = "border px-3 py-1 font-sans text-xs transition-colors";
 const ACTIVE = "border-accent-mix bg-accent-tint text-accent";
 const INACTIVE = "border-border text-muted hover:text-accent";
 
-export function tabClass(isActive: boolean, className?: string): string {
+/** Not exported: the two components below are the API, and a file that
+ * exports anything else loses Fast Refresh. */
+function tabClass(isActive: boolean, className?: string): string {
   return cn(BASE, isActive ? ACTIVE : INACTIVE, className);
 }
 

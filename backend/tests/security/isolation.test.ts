@@ -30,7 +30,7 @@ function connected(id: number, genesisHash: string, name = `node-${id}`): System
   };
 }
 
-function fakeConnection(id: number) {
+function fakeConnection(id: string) {
   const cache = new Map<number, SystemConnectedMessage>();
   return {
     id,
@@ -118,7 +118,7 @@ describe("chain isolation", () => {
 
   it("routes each node to its own chain, even on one socket", async () => {
     const { instance, stubs } = router(new Set([CHAIN_A, CHAIN_B]));
-    const conn = fakeConnection(1);
+    const conn = fakeConnection("1");
 
     await instance.route(conn, connected(1, CHAIN_A));
     await instance.route(conn, connected(2, CHAIN_B));
@@ -131,7 +131,7 @@ describe("chain isolation", () => {
 
   it("a rejected chain never reaches a ChainDO", async () => {
     const { instance, stubs } = router(new Set([CHAIN_A]));
-    const conn = fakeConnection(1);
+    const conn = fakeConnection("1");
 
     await instance.route(conn, connected(1, CHAIN_B));
 
@@ -142,7 +142,7 @@ describe("chain isolation", () => {
   it("an unrouted message is dropped rather than guessing a chain", async () => {
     const { instance, stubs } = router(new Set([CHAIN_A]));
     // No system.connected was ever sent on this connection.
-    await instance.route(fakeConnection(9), { msg: "system.interval", id: 1, peers: 1 });
+    await instance.route(fakeConnection("9"), { msg: "system.interval", id: 1, peers: 1 });
     expect(stubs.size).toBe(0);
   });
 });

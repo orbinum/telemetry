@@ -12,6 +12,27 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-08-16
+
+**Every node reporting is a node shown.** Six nodes were connected and sending
+data; the dashboard listed four of them, and which four changed between
+reloads.
+
+### Fixed
+
+- **Nodes were overwriting each other, so the chain showed four of six.** A
+  connection's id was a counter private to its GatewayDO, and node keys built
+  from it (`1:1`) travel to a ChainDO that pools all four gateway partitions
+  into one table. Every partition starts counting at 1, so the first socket on
+  one partition and the first on another claimed the same key, and the later
+  arrival silently replaced the earlier. The symptom read as a node-side
+  problem — the visible set shifted between reloads, and correcting one node's
+  configuration made a different node disappear — which is what makes it worth
+  naming: every node was connected and reporting the whole time. Connection
+  ids now carry the Durable Object's own id, unique per partition.
+- `Tab.tsx` exported a helper alongside its components, which costs the file
+  its Fast Refresh. Nothing imported it; it is local now.
+
 ## [0.2.3] - 2026-08-16
 
 **The UI on a phone.** The node table assumed a desktop viewport, and both of
@@ -200,7 +221,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/orbinum/telemetry/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/orbinum/telemetry/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/orbinum/telemetry/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/orbinum/telemetry/compare/v0.2.0...v0.2.1

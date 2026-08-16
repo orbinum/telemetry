@@ -10,10 +10,10 @@ export class RouteTable {
   /** `connId:msgId` → genesis hash. */
   private routes = new Map<string, string>();
   /** connId → set of genesis hashes with at least one node on that connection. */
-  private connChains = new Map<number, Set<string>>();
+  private connChains = new Map<string, Set<string>>();
 
   /** Record where a node announced by system.connected lives. */
-  register(connId: number, msgId: number, genesisHash: string): void {
+  register(connId: string, msgId: number, genesisHash: string): void {
     this.routes.set(`${connId}:${msgId}`, genesisHash);
     let chains = this.connChains.get(connId);
     if (chains === undefined) {
@@ -24,12 +24,12 @@ export class RouteTable {
   }
 
   /** The chain a message belongs to, or undefined before system.connected. */
-  resolve(connId: number, msgId: number): string | undefined {
+  resolve(connId: string, msgId: number): string | undefined {
     return this.routes.get(`${connId}:${msgId}`);
   }
 
   /** Distinct node ids a connection has registered (for the Fase 5 cap). */
-  nodeCount(connId: number): number {
+  nodeCount(connId: string): number {
     let count = 0;
     const prefix = `${connId}:`;
     for (const key of this.routes.keys()) {
@@ -39,7 +39,7 @@ export class RouteTable {
   }
 
   /** Forget a connection; returns the chains that must drop its nodes. */
-  dropConnection(connId: number): string[] {
+  dropConnection(connId: string): string[] {
     const prefix = `${connId}:`;
     for (const key of this.routes.keys()) {
       if (key.startsWith(prefix)) this.routes.delete(key);

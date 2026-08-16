@@ -30,7 +30,7 @@ function connected(id: number, genesisHash = ALLOWED): SystemConnectedMessage {
 }
 
 /** Minimal NodeConnection stand-in: only what the router touches. */
-function fakeConnection(id = 1) {
+function fakeConnection(id = "1") {
   const cache = new Map<number, SystemConnectedMessage>();
   return {
     id,
@@ -75,7 +75,7 @@ describe("system.connected", () => {
 
     await router.route(conn, connected(1));
 
-    expect(routes.resolve(1, 1)).toBe(ALLOWED);
+    expect(routes.resolve("1", 1)).toBe(ALLOWED);
     expect(record).toHaveBeenCalledWith(ALLOWED, "Orbinum Testnet", 1000);
     expect(nodeConnected).toHaveBeenCalledWith("1:1", expect.anything(), undefined);
   });
