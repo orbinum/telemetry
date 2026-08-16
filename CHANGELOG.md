@@ -12,6 +12,18 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-16
+
+**Devnet is gone, and the genesis allowlist no longer has an open mode.**
+
+The worker decided which nodes to accept by matching their genesis hash
+against an allowlist — except that an _empty_ allowlist accepted everything,
+which is what made local development against a `--dev` chain possible. That
+default meant one missing or mistyped variable stood between the deployed
+worker and accepting every chain on the internet, each one spawning a Durable
+Object. The convenience and the vector were the same line of code, so both are
+removed.
+
 ### Removed
 
 - **Devnet, entirely.** The UI no longer carries a Devnet network, and the
@@ -116,5 +128,6 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/orbinum/telemetry/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/orbinum/telemetry/releases/tag/v0.1.0
