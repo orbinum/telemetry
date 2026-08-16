@@ -12,6 +12,12 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-16
+
+**The release pipeline reaches Cloudflare.** 0.2.0 tagged and published but
+stopped there — deploying was still a manual step, so the fail-closed
+allowlist it shipped never reached production. This release carries it there.
+
 ### Added
 
 - **A release deploys itself.** Once the tag and the GitHub Release exist, CI
@@ -32,6 +38,13 @@ a whole: the worker and the UI compile the same wire contract from
   "Backend checks failed", pointing at a package that was never the problem.
   The group now keys on `github.workflow`, and `all-checks` names a cancelled
   or skipped job for what it is instead of calling it a failure.
+
+### Security
+
+- **A pull request's branch name could run commands on the CI runner.** The
+  `protect-main` job interpolated `github.head_ref` straight into a shell
+  script, and the person opening the PR chooses that name. It now travels
+  through an environment variable, where the shell never parses it.
 
 ## [0.2.0] - 2026-08-16
 
@@ -149,6 +162,7 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/orbinum/telemetry/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/orbinum/telemetry/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/orbinum/telemetry/releases/tag/v0.1.0
