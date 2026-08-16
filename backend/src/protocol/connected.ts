@@ -116,6 +116,7 @@ export function parseSystemConnected(
       implementation,
       version: finalVersion,
       networkId,
+      authority: p.authority === true,
       validator: validator as string | undefined,
       startupTime: startupTime as string | undefined,
       targetOs: targetOs as string | undefined,

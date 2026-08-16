@@ -12,6 +12,26 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-08-16
+
+### Fixed
+
+- **Every validator was listed as a full node.** A node announces its role on
+  connect as `authority: true`; the _address_ behind that role arrives
+  separately via `afg.authority_set`, which clients only emit at telemetry
+  verbosity 1 and above. Both the parser and the UI keyed off the address, so
+  on a verbosity-0 network — which is the documented default, and what every
+  Orbinum node runs — no node ever looked like a validator. The role is now
+  read from the flag, and the Validator column says "validator" for an
+  authority whose address has not arrived instead of showing a dash.
+
+  This diverges from the reference implementation on purpose: it ignores
+  `authority` and derives the role from the address alone, which is correct
+  for Polkadot and Kusama because they report at verbosity 1 or above. Raising
+  the nodes to verbosity 1 would surface the addresses too, at the cost of
+  per-block chatter — the flag answers "how many validators are up" without
+  it.
+
 ## [0.2.4] - 2026-08-16
 
 **Every node reporting is a node shown.** Six nodes were connected and sending
@@ -221,7 +241,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/orbinum/telemetry/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/orbinum/telemetry/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/orbinum/telemetry/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/orbinum/telemetry/compare/v0.2.1...v0.2.2

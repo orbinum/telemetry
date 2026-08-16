@@ -50,7 +50,7 @@ export function computeStatistics(nodes: FeedNode[]): ChainStatistics {
         ? undefined
         : (node.geo.country ?? node.geo.city),
     );
-    tally(validatorStatus, node.validator === undefined ? "full node" : "validator");
+    tally(validatorStatus, node.authority === true ? "validator" : "full node");
     if (node.blockTime !== undefined) blockTimes.push(node.blockTime);
     if (node.propagationTime !== undefined) propagations.push(node.propagationTime);
     if (node.stale) staleCount++;

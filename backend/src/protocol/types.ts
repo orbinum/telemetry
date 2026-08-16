@@ -30,6 +30,17 @@ export interface NodeDetails {
   implementation: string;
   version: string;
   networkId: string;
+  /**
+   * Whether the node runs as an authority. Sent by every client on
+   * system.connected, and the only signal of the role at verbosity 0.
+   */
+  authority?: boolean;
+  /**
+   * The authority's address, which arrives separately via `afg.authority_set`
+   * — a message the client only emits at verbosity 1 and above. A validator
+   * therefore has `authority: true` long before it has an address, and often
+   * never gets one.
+   */
   validator?: string;
   /** Unix ms as a string — the client sends it quoted. */
   startupTime?: string;

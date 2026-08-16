@@ -14,6 +14,22 @@ const payload = {
 };
 
 describe("parseSystemConnected", () => {
+  it("reads the authority flag, which is how a validator identifies itself", () => {
+    // What a real `--validator` node sends at verbosity 0: `authority: true`
+    // and no `validator` field at all. The address comes later, over
+    // `afg.authority_set`, which the client only emits at verbosity 1+ — so
+    // reading the address alone labelled every validator a full node.
+    const msg = parseSystemConnected(1, { ...payload, authority: true });
+    expect(msg?.node.authority).toBe(true);
+    expect(msg?.node.validator).toBeUndefined();
+  });
+
+  it("treats a node without the flag as a full node", () => {
+    expect(parseSystemConnected(1, payload)?.node.authority).toBe(false);
+    // Only a literal `true` counts — a truthy string must not promote a node.
+    expect(parseSystemConnected(1, { ...payload, authority: "yes" })?.node.authority).toBe(false);
+  });
+
   it("parses required and optional fields", () => {
     const msg = parseSystemConnected(1, {
       ...payload,

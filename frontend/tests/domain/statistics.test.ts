@@ -31,9 +31,13 @@ describe("computeStatistics", () => {
     expect(stats.location.get("CL")).toBe(1);
   });
 
-  it("splits validators from full nodes", () => {
-    const stats = computeStatistics([node(1, { validator: "5F" }), node(2)]);
-    expect(stats.validatorStatus.get("validator")).toBe(1);
+  it("splits validators from full nodes by role, not by address", () => {
+    const stats = computeStatistics([
+      node(1, { authority: true }),
+      node(2, { authority: true, validator: "5F" }),
+      node(3),
+    ]);
+    expect(stats.validatorStatus.get("validator")).toBe(2);
     expect(stats.validatorStatus.get("full node")).toBe(1);
   });
 

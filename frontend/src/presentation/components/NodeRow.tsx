@@ -61,6 +61,10 @@ export const NodeRow = memo(function NodeRow({ id, now, top, height }: NodeRowPr
               className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
             />
           </span>
+        ) : node.authority === true ? (
+          <span title="Authority — address requires telemetry verbosity 1 or higher">
+            validator
+          </span>
         ) : (
           NO_VALUE
         )}

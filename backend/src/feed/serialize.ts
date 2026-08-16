@@ -15,6 +15,7 @@ export function toFeedNode(id: number, node: NodeState): FeedNode {
     name: node.details.name,
     implementation: node.details.implementation,
     version: node.details.version,
+    authority: node.details.authority,
     validator: node.validator,
     startupTime: Number.isFinite(startup) ? startup : undefined,
     peers: node.peers,

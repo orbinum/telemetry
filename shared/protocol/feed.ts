@@ -33,6 +33,18 @@ export interface FeedNode {
   name: string;
   implementation: string;
   version: string;
+  /**
+   * Whether the node runs as an authority — sent by every client on connect,
+   * at any verbosity.
+   *
+   * The reference implementation has no such field: it derives the role from
+   * `validator` alone, which works there because Polkadot and Kusama report at
+   * verbosity 1 or above, where the address always arrives. Orbinum's nodes
+   * report at 0, where it never does, so reading the address alone made every
+   * validator look like a full node.
+   */
+  authority?: boolean;
+  /** The authority's address. Only arrives via `afg.authority_set`, at verbosity ≥ 1. */
   validator?: string;
   /** Unix ms (string on the node wire, number here). */
   startupTime?: number;
