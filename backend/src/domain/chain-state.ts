@@ -11,7 +11,9 @@
  * parameter, which is what makes propagation and staleness testable.
  */
 
+import { buildSnapshot } from "./chain-snapshot";
 import { NodeTable } from "./node-table";
+import type { ChainSnapshot } from "./chain-snapshot";
 import type { NodeEntry } from "./node-table";
 import type { NodeGeo, NodeState } from "./node-state";
 import type { BlockRef, NodeMessage, SystemConnectedMessage } from "../protocol/node";
@@ -193,5 +195,22 @@ export class ChainState {
 
   list(): NodeEntry[] {
     return this.table.entries();
+  }
+
+  /**
+   * This minute's history row. Called by the reaper alarm, after the sweep, so
+   * the counts describe the nodes that are actually still there.
+   */
+  snapshot(now: number): ChainSnapshot {
+    return buildSnapshot(
+      {
+        genesisHash: this.genesisHash,
+        nodes: this.table.entries(),
+        best: this.best,
+        finalized: this.finalized,
+        averageBlockTime: this.averageBlockTime,
+      },
+      now,
+    );
   }
 }

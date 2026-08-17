@@ -12,11 +12,12 @@ pnpm cf-typegen       # regenerate CloudflareBindings after editing wrangler.jso
 
 ## Routes
 
-| Route                     | Purpose                                                                                                    |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `GET /submit`, `/submit/` | Node telemetry WebSocket upgrade (both spellings — the chainspec multiaddr resolves with a trailing slash) |
-| `GET /feed/:genesisHash`  | Browser feed WebSocket, routed straight to that chain's `ChainDO`                                          |
-| `GET /chains`             | Chain directory for the UI's picker (CORS-enabled)                                                         |
+| Route                       | Purpose                                                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GET /submit`, `/submit/`   | Node telemetry WebSocket upgrade (both spellings — the chainspec multiaddr resolves with a trailing slash) |
+| `GET /feed/:genesisHash`    | Browser feed WebSocket, routed straight to that chain's `ChainDO`                                          |
+| `GET /chains`               | Chain directory for the UI's picker (CORS-enabled)                                                         |
+| `GET /history/:genesisHash` | Chain history from D1: `?window=1h…30d`. Never touches a Durable Object                                    |
 
 ## Architecture
 
@@ -39,13 +40,42 @@ node ──ws──> Worker ──> GatewayDO ──rpc──> ChainDO ──ws�
 | `gateway-do/` | Node sockets, ingest policy, chain directory                        |
 | `chain-do/`   | Per-chain state owner, feed batching and fanout                     |
 | `feed/`       | Domain → wire serialization for browsers                            |
+| `db/`         | The D1 history tables — the only place that writes SQL              |
 | `routes/`     | HTTP handlers; they route and validate, never parse telemetry       |
 | `middleware/` | CORS, rate limiting, and geo across the Worker→DO boundary          |
 | `services/`   | Which Durable Object owns what                                      |
 | `config/`     | Allowlist and limits                                                |
 
-`tests/` mirrors `src/`, plus `tests/security/` for adversarial input. 222
+`tests/` mirrors `src/`, plus `tests/security/` for adversarial input. 246
 tests total; run them with `pnpm test`.
+
+## History
+
+Live state is never persisted — a node rebuilds it from the wire within
+seconds of reconnecting, so storing it would only add a second, always-stale
+copy. What no restart can rebuild is **time**, and that is what D1 holds:
+
+| Table                  | Written by                     | Kept    |
+| ---------------------- | ------------------------------ | ------- |
+| `chain_history`        | the `ChainDO` alarm, every 60s | 30 days |
+| `chain_history_hourly` | the nightly cron rollup        | forever |
+
+The aggregation happens in `ChainState.snapshot()` **before** the write, which
+is what makes the cost independent of node count: 5 nodes and 500 produce one
+row a minute either way, and the version/implementation/country histograms
+carry the per-node detail that a row-per-node would have cost 65× more to
+store. Writes go through `ctx.waitUntil` — history is best-effort, live
+telemetry is not, so an overloaded D1 can never delay the reaper or the feed.
+
+Set up a fresh database with:
+
+```sh
+wrangler d1 create orbinum-telemetry     # paste the id into wrangler.jsonc
+pnpm exec wrangler d1 migrations apply orbinum-telemetry --remote
+```
+
+The `DB` binding is optional in code: without it the worker runs exactly as
+before and simply records nothing.
 
 ## Environment variables
 

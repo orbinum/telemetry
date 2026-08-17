@@ -65,7 +65,34 @@
           "period": 60,
         },
       },
+      {
+        "name": "HISTORY_LIMITER",
+        "type": "ratelimit",
+        "namespace_id": "6003",
+        "simple": {
+          "limit": 60,
+          "period": 60,
+        },
+      },
     ],
+  },
+  // Chain history. A separate database from api-worker's `orbinum` on purpose:
+  // D1 executes serially per database, so sharing one would let a telemetry
+  // write path stall the member API, and the reverse.
+  //
+  // The binding is optional in code (`env.DB` checked before use), so the
+  // worker runs without it — history just stops being recorded.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "orbinum-telemetry",
+      "database_id": "9d457af9-2b01-4fa5-9421-f5bc5c577595",
+    },
+  ],
+  // Nightly rollup + prune. Deliberately not a DO alarm: this is
+  // chain-independent maintenance and must not wake an object serving ingest.
+  "triggers": {
+    "crons": ["0 4 * * *"],
   },
   "vars": {
     "TELEMETRY_TESTNET_GENESIS": "0x58e2de05e550e64bb73bb2aeb706431dae70dcd1b589d477033c6e3aef3680ae",

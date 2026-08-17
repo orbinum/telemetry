@@ -16,10 +16,16 @@
 # you wipe the chain; paste the new one and restart `wrangler dev`. Running
 # against a persistent local chain (`--chain local`, a fixed base path) avoids
 # the churn.
-TELEMETRY_CHAINS=
-
-# wrangler dev reads this file and it overrides the `vars` block in
-# wrangler.jsonc, which holds the real testnet hash for production. Set this to
-# watch the live testnet from a local worker instead of your own chain.
+#
+# Keep these three in the same order as the `vars` block in wrangler.jsonc.
+# `wrangler types` emits bindings in the order it encounters them, so a
+# different order here regenerates worker-configuration.d.ts differently than
+# CI does — where this file does not exist — and CI's staleness check fails on
+# a diff that means nothing.
+#
+# wrangler dev reads this file and it overrides that block, which holds the
+# real testnet hash for production. Set the testnet one to watch the live
+# network from a local worker instead of your own chain.
 TELEMETRY_TESTNET_GENESIS=
 TELEMETRY_MAINNET_GENESIS=
+TELEMETRY_CHAINS=

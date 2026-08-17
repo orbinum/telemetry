@@ -12,6 +12,28 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Added
+
+- **The network now has a past.** Everything the service knew lived in memory
+  and died with its Durable Object: how many nodes were online last night, when
+  finality stalled, whether a release reached every validator. None of it was
+  reconstructible from any source. A `chain_history` table in D1 now holds one
+  aggregated row per chain per minute — node count, authorities, stale nodes,
+  best and finalized height, the finality lag between them, average block time,
+  and histograms of version, implementation and country.
+
+  Aggregating in memory before the write is the whole design: 5 nodes and 500
+  produce the same single row per minute, where a row per node would have cost
+  65× more for data the histograms already answer. The rows are written by the
+  reaper alarm that already ran at exactly this cadence, through
+  `ctx.waitUntil` — history is best-effort and live telemetry is not, so an
+  overloaded database can never delay the node list.
+
+- **`GET /history/:genesisHash`** serves that history straight from D1 without
+  waking any Durable Object, so opening a chart never competes with ingest. A
+  nightly cron rolls the 60s buckets into hourly ones and prunes what is past
+  the retention window.
+
 ## [0.2.5] - 2026-08-16
 
 ### Fixed
