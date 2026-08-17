@@ -44,6 +44,24 @@ a whole: the worker and the UI compile the same wire contract from
   Verified rather than assumed: a real node restarted twice with a persistent
   base path reported one PeerId across all three runs.
 
+- **Per-node uptime**, at `GET /uptime/:genesisHash`. The per-chain histograms
+  collapse node identity on purpose, so they cannot say which validator drops
+  most often or which node keeps reconnecting; a `node_sessions` table now
+  records one row per connection — opened when a node arrives, closed when it
+  leaves — and those two questions become a query. `?node=<PeerId>` returns one
+  node's sessions, where many over a short window is a flapping node.
+
+  One row per connection rather than per interval is what makes it affordable:
+  a stable 500-node network writes hundreds of rows a day instead of hundreds
+  of thousands, and a whole sweep closes in a single batched statement rather
+  than one call per node.
+
+  A node with no persistent volume regenerates its key on every restart and so
+  appears as a fresh identity that connects once and is never seen again. Those
+  are pruned as noise; a node that reconnects repeatedly is kept, because that
+  is the signal. The uptime numbers are labelled `identity: "self-reported"` —
+  a figure called "uptime" reads as authoritative otherwise.
+
 ### Changed
 
 - **`network_id` is validated as a PeerId, not merely bounded in length.** It

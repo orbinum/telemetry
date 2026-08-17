@@ -82,6 +82,30 @@ describe("removal", () => {
     table.removeByPrefix("1:");
     expect(table.add("1:1", connected(1, "a"), undefined, 2000)).not.toBe(first);
   });
+
+  it("hands back the departing node, not only its id", () => {
+    // A departure is the only moment a session can be closed, and the node's
+    // state is unreachable immediately after — so the caller that records it
+    // needs the node itself.
+    const table = new NodeTable();
+    table.add("1:1", connected(1, "leaving"), undefined, 1000);
+
+    const [entry] = table.takeByPrefix("1:");
+    expect(entry.node.details.name).toBe("leaving");
+    expect(entry.node.connectedAt).toBe(1000);
+    expect(table.size).toBe(0);
+  });
+
+  it("hands back reaped nodes the same way", () => {
+    const table = new NodeTable();
+    table.add("a", connected(1, "quiet"), undefined, 1000);
+    table.add("b", connected(2, "chatty"), undefined, 70_000);
+
+    const taken = table.takeExpired(70_000, 60_000);
+    expect(taken).toHaveLength(1);
+    expect(taken[0].node.details.name).toBe("quiet");
+    expect(table.has("b")).toBe(true);
+  });
 });
 
 describe("label", () => {

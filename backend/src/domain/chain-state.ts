@@ -100,6 +100,21 @@ export class ChainState {
     return this.table.removeExpired(now, timeoutMs);
   }
 
+  /**
+   * The same two removals, returning the departing nodes themselves.
+   *
+   * A node leaving is the only moment its session can be closed, and its state
+   * is unreachable one line later — so callers that record history take the
+   * node, while callers that only update the feed take the id.
+   */
+  takeConnection(prefix: string): NodeEntry[] {
+    return this.table.takeByPrefix(prefix);
+  }
+
+  takeExpired(now: number, timeoutMs: number = NODE_TIMEOUT_MS): NodeEntry[] {
+    return this.table.takeExpired(now, timeoutMs);
+  }
+
   // ─── Aggregation (chain.rs handle_block) ───────────────────────────────────
 
   /**

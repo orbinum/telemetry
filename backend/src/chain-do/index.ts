@@ -12,7 +12,7 @@
  *   - `ChainState` owns the domain (nodes, aggregates, propagation)
  *   - `FeedHub` owns what changed since the last flush
  *   - `FeedBroadcaster` owns snapshots, batching and fanout
- *   - `db/chain-history` owns the history table
+ *   - `db/chain-history` and `db/node-sessions` own the history tables
  *   - this class owns RPC, sockets and the reaper alarm
  *
  * The reaper alarm doubles as the history writer: it already runs once a
@@ -23,10 +23,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { FeedBroadcaster } from "./feed-broadcaster";
 import { writeSnapshot } from "../db/chain-history";
+import { closeSessions, openSession } from "../db/node-sessions";
 import { ChainState, NODE_TIMEOUT_MS } from "../domain/chain-state";
 import { FeedHub } from "../feed/hub";
 import type { ChainSnapshot } from "../domain/chain-snapshot";
-import type { NodeGeo } from "../domain/node-state";
+import type { NodeGeo, NodeState } from "../domain/node-state";
+import type { NodeEntry } from "../domain/node-table";
 import type { NodeMessage, SystemConnectedMessage } from "../protocol/node";
 
 /** Reaper cadence: sweep expired nodes once a minute while any are alive. */
@@ -54,6 +56,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     this.hub.markUpdated(id);
     this.hub.markChainChanged();
     this.feed.schedule(this.chain);
+    this.recordSessionStart(this.chain.getById(id));
     await this.armReaper();
   }
 
@@ -74,8 +77,10 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
 
   async connectionClosed(nodeKeyPrefix: string): Promise<void> {
     if (this.chain === undefined) return;
-    this.hub.markRemoved(this.chain.removeConnection(nodeKeyPrefix));
+    const departed = this.chain.takeConnection(nodeKeyPrefix);
+    this.hub.markRemoved(departed.map((entry) => entry.id));
     this.feed.schedule(this.chain);
+    this.recordSessionEnd(departed, Date.now());
   }
 
   // ─── Reaper ────────────────────────────────────────────────────────────────
@@ -83,9 +88,11 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
   override async alarm(): Promise<void> {
     if (this.chain === undefined) return;
     const now = Date.now();
-    this.hub.markRemoved(this.chain.reapExpired(now, NODE_TIMEOUT_MS));
+    const reaped = this.chain.takeExpired(now, NODE_TIMEOUT_MS);
+    this.hub.markRemoved(reaped.map((entry) => entry.id));
     this.feed.schedule(this.chain);
 
+    this.recordSessionEnd(reaped, now);
     // After the sweep, so the row describes the nodes that are still here.
     this.recordHistory(this.chain.snapshot(now));
 
@@ -110,6 +117,39 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     this.ctx.waitUntil(
       writeSnapshot(db, snapshot).catch((error: unknown) => {
         console.error("chain history write failed", error);
+      }),
+    );
+  }
+
+  /** Open a session for a node that just announced itself. Best-effort. */
+  private recordSessionStart(node: NodeState | undefined): void {
+    const db = this.env.DB;
+    if (db === undefined || node === undefined || this.chain === undefined) return;
+    this.ctx.waitUntil(
+      openSession(db, this.chain.genesisHash, node).catch((error: unknown) => {
+        console.error("session open failed", error);
+      }),
+    );
+  }
+
+  /**
+   * Close the sessions of nodes that just left — the only moment their uptime
+   * becomes a fact rather than an open interval.
+   *
+   * One batched statement for the whole departure: a reaper sweeping a large
+   * chain would otherwise issue a D1 call per node, which is how a single
+   * invocation runs out of queries.
+   */
+  private recordSessionEnd(departed: NodeEntry[], now: number): void {
+    const db = this.env.DB;
+    if (db === undefined || this.chain === undefined || departed.length === 0) return;
+    const sessions = departed.map((entry) => ({
+      networkId: entry.node.details.networkId,
+      connectedAt: entry.node.connectedAt,
+    }));
+    this.ctx.waitUntil(
+      closeSessions(db, this.chain.genesisHash, sessions, now).catch((error: unknown) => {
+        console.error("session close failed", error);
       }),
     );
   }

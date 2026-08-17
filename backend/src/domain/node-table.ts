@@ -73,20 +73,35 @@ export class NodeTable {
 
   /** Remove every node of one connection; returns the feed ids that left. */
   removeByPrefix(prefix: string): number[] {
-    return this.removeWhere((key) => key.startsWith(prefix));
+    return this.removeWhere((key) => key.startsWith(prefix)).map((entry) => entry.id);
   }
 
   /** Remove nodes that stopped reporting; returns the feed ids that left. */
   removeExpired(now: number, timeoutMs: number): number[] {
+    return this.removeWhere((_key, node) => node.isExpired(now, timeoutMs)).map(
+      (entry) => entry.id,
+    );
+  }
+
+  /**
+   * The same removals, but keeping the node that left rather than only its
+   * feed id — a departure is the moment a session ends, and the state is gone
+   * immediately after.
+   */
+  takeByPrefix(prefix: string): NodeEntry[] {
+    return this.removeWhere((key) => key.startsWith(prefix));
+  }
+
+  takeExpired(now: number, timeoutMs: number): NodeEntry[] {
     return this.removeWhere((_key, node) => node.isExpired(now, timeoutMs));
   }
 
-  private removeWhere(predicate: (key: string, node: NodeState) => boolean): number[] {
-    const removed: number[] = [];
+  private removeWhere(predicate: (key: string, node: NodeState) => boolean): NodeEntry[] {
+    const removed: NodeEntry[] = [];
     for (const [key, node] of this.nodes) {
       if (!predicate(key, node)) continue;
       const id = this.ids.get(key);
-      if (id !== undefined) removed.push(id);
+      if (id !== undefined) removed.push({ key, id, node });
       this.nodes.delete(key);
       this.ids.delete(key);
     }

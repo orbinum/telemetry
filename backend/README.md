@@ -18,6 +18,7 @@ pnpm cf-typegen       # regenerate CloudflareBindings after editing wrangler.jso
 | `GET /feed/:genesisHash`    | Browser feed WebSocket, routed straight to that chain's `ChainDO`                                          |
 | `GET /chains`               | Chain directory for the UI's picker (CORS-enabled)                                                         |
 | `GET /history/:genesisHash` | Chain history from D1: `?window=1h…30d`. Never touches a Durable Object                                    |
+| `GET /uptime/:genesisHash`  | Per-node uptime and session counts; `?node=<PeerId>` for one node's sessions                               |
 
 ## Architecture
 
@@ -46,7 +47,7 @@ node ──ws──> Worker ──> GatewayDO ──rpc──> ChainDO ──ws�
 | `services/`   | Which Durable Object owns what                                      |
 | `config/`     | Allowlist and limits                                                |
 
-`tests/` mirrors `src/`, plus `tests/security/` for adversarial input. 253
+`tests/` mirrors `src/`, plus `tests/security/` for adversarial input. 262
 tests total; run them with `pnpm test`.
 
 ## History
@@ -55,10 +56,11 @@ Live state is never persisted — a node rebuilds it from the wire within
 seconds of reconnecting, so storing it would only add a second, always-stale
 copy. What no restart can rebuild is **time**, and that is what D1 holds:
 
-| Table                  | Written by                     | Kept    |
-| ---------------------- | ------------------------------ | ------- |
-| `chain_history`        | the `ChainDO` alarm, every 60s | 30 days |
-| `chain_history_hourly` | the nightly cron rollup        | forever |
+| Table                  | Written by                     | Kept     |
+| ---------------------- | ------------------------------ | -------- |
+| `chain_history`        | the `ChainDO` alarm, every 60s | 30 days  |
+| `chain_history_hourly` | the nightly cron rollup        | forever  |
+| `node_sessions`        | one row per connection         | one year |
 
 The aggregation happens in `ChainState.snapshot()` **before** the write, which
 is what makes the cost independent of node count: 5 nodes and 500 produce one
@@ -66,6 +68,19 @@ row a minute either way, and the version/implementation/country histograms
 carry the per-node detail that a row-per-node would have cost 65× more to
 store. Writes go through `ctx.waitUntil` — history is best-effort, live
 telemetry is not, so an overloaded D1 can never delay the reaper or the feed.
+
+`node_sessions` answers what the per-chain histograms deliberately cannot:
+which validator has the worst uptime, and which node keeps reconnecting. It is
+written when a node arrives and closed when it leaves, so the volume follows
+connection churn rather than message rate — a stable 500-node network writes
+hundreds of rows a day, not hundreds of thousands.
+
+It is keyed on the node's PeerId, the only identifier that survives a restart.
+That is **self-reported**, so read the numbers as what nodes claimed; the API
+labels them `identity: "self-reported"` for the same reason. Sessions from a
+node that regenerates its key on every restart — one short session under an
+identity never seen again — are pruned as the noise they are, while a node that
+reconnects repeatedly is kept, because that is the signal.
 
 Set up a fresh database with:
 
