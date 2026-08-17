@@ -12,6 +12,16 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-17
+
+**The service remembers.** Every number it knew was live and only live: the
+dashboard could say fourteen nodes are up, never that nine were up at 3am, and
+a Durable Object restart erased even that. This release keeps the part of
+telemetry that cannot be rebuilt from the wire — time — in D1.
+
+Nothing about ingest or the live feed changes. The `DB` binding is optional in
+code, so a deploy without it behaves exactly as 0.2.5 did.
+
 ### Added
 
 - **The network now has a past.** Everything the service knew lived in memory
@@ -306,7 +316,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/orbinum/telemetry/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/orbinum/telemetry/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/orbinum/telemetry/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/orbinum/telemetry/compare/v0.2.2...v0.2.3
