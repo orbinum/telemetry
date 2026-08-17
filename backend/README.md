@@ -46,7 +46,7 @@ node ──ws──> Worker ──> GatewayDO ──rpc──> ChainDO ──ws�
 | `services/`   | Which Durable Object owns what                                      |
 | `config/`     | Allowlist and limits                                                |
 
-`tests/` mirrors `src/`, plus `tests/security/` for adversarial input. 246
+`tests/` mirrors `src/`, plus `tests/security/` for adversarial input. 253
 tests total; run them with `pnpm test`.
 
 ## History
@@ -155,16 +155,28 @@ limiter outage must not take ingest down.
 Bounds live in `src/protocol/limits.ts`; a value outside them fails the whole
 message rather than being clamped, since it did not come from a real node.
 
-| Field                     | Rule                         |
-| ------------------------- | ---------------------------- |
-| Block heights             | Non-negative safe integers   |
-| `notify.finalized` height | Plain decimal strings only   |
-| Counts (peers, txcount…)  | Non-negative and finite      |
-| Free-form strings         | ≤ 256 chars; addresses ≤ 128 |
+| Field                     | Rule                           |
+| ------------------------- | ------------------------------ |
+| Block heights             | Non-negative safe integers     |
+| `notify.finalized` height | Plain decimal strings only     |
+| Counts (peers, txcount…)  | Non-negative and finite        |
+| Free-form strings         | ≤ 256 chars; addresses ≤ 128   |
+| `network_id`              | base58, 46–64 chars (a PeerId) |
 
 This closed a confirmed exploit: before it, a single node reporting
 `height: 1e308` became the chain's best block permanently, starving every
 honest node of propagation numbers and rendering `1e+308` to every visitor.
+
+`network_id` is checked as a shape rather than only a length because it is the
+node's identity: bounded at 128 free characters, one client could mint
+unlimited distinct identities, which is a write amplifier against anything
+keyed on it. The check is not anchored to the `12D3KooW` prefix — every
+Orbinum node has an Ed25519 key today, but a node with any other key type
+reports a differently shaped id and must not be dropped.
+
+It stays **self-reported**: `/submit` is public and nothing proves the sender
+holds the matching private key. It identifies a node exactly as well as the
+node is honest.
 
 ### Chain directory TTL
 

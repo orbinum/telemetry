@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ChainState } from "../../src/domain/chain-state";
 import { toFeedChain, toFeedNode } from "../../src/feed/serialize";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
+import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
 const HASH = "0x" + "cd".repeat(32);
@@ -18,7 +19,7 @@ function connected(
       name: "validator-1",
       implementation: "Orbinum Node",
       version: "1.0.0",
-      networkId: "12D3KooWTest",
+      networkId: peerId("test"),
       ...overrides,
     },
   };
@@ -47,6 +48,16 @@ describe("toFeedNode", () => {
       stale: false,
       geo: { city: "Santiago" },
     });
+  });
+
+  it("carries the PeerId, the one id that survives a restart", () => {
+    // The row's `id` is a counter that resets with the Durable Object, so it
+    // cannot identify a node across sessions. The PeerId can, which is why the
+    // UI needs it on the wire.
+    const chain = new ChainState(GENESIS);
+    const id = chain.addNode("1:1", connected(), undefined, 1000);
+
+    expect(toFeedNode(id, chain.getById(id)!).networkId).toBe(peerId("test"));
   });
 
   it("parses startupTime from the node's quoted string, dropping garbage", () => {

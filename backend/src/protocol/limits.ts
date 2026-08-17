@@ -41,3 +41,28 @@ export function isValidCount(value: number): boolean {
 export function isValidString(value: string, max: number = MAX_STRING_LENGTH): boolean {
   return value.length <= max;
 }
+
+/**
+ * A libp2p PeerId, in the base58 form Substrate reports (`network_id`).
+ *
+ * Checked as a shape rather than left as a free 128-char string because this
+ * is the field a per-node history is keyed on: a length bound alone lets an
+ * attacker mint unlimited distinct identities, which is a write amplifier
+ * against any per-node table. This narrows that to values that at least look
+ * like a PeerId.
+ *
+ * Deliberately not anchored to `12D3KooW`: that prefix is what an Ed25519 key
+ * produces, and every Orbinum node has one today, but an RSA or secp256k1 key
+ * yields a different prefix and length. Anchoring to what today's fleet
+ * happens to use would silently drop those nodes. The alphabet and the length
+ * range are the parts that are actually true of every PeerId.
+ *
+ * Note this validates *form*, never ownership: `/submit` is public and the
+ * value is self-reported, so it identifies a node only as well as the node is
+ * honest. See the history design notes.
+ */
+const PEER_ID_RE = /^[1-9A-HJ-NP-Za-km-z]{46,64}$/;
+
+export function isValidPeerId(value: string): boolean {
+  return PEER_ID_RE.test(value);
+}

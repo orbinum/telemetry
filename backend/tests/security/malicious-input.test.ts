@@ -15,6 +15,7 @@ import { toFeedChain, toFeedNode } from "../../src/feed/serialize";
 import { MAX_ADDRESS_LENGTH, MAX_STRING_LENGTH } from "../../src/protocol/limits";
 import { parseNodeMessage } from "../../src/protocol/node";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
+import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
 
@@ -25,7 +26,7 @@ const connectedPayload = {
   name: "validator-1",
   implementation: "Orbinum Node",
   version: "1.0.0",
-  network_id: "12D3KooWTest",
+  network_id: peerId("validator-1"),
 };
 
 function parseConnected(overrides: Record<string, unknown>) {
@@ -216,6 +217,23 @@ describe("node identity", () => {
   it("accepts the ids a real node multiplexes with", () => {
     for (const id of [0, 1, 20]) {
       expect(parseNodeMessage(JSON.stringify({ id, payload: connectedPayload }))).not.toBeNull();
+    }
+  });
+
+  it("refuses a network_id that is merely short enough", () => {
+    // `network_id` is the node's PeerId and the identity any per-node history
+    // is keyed on. Bounded only by length, one client could mint a new
+    // "node" per frame — unbounded cardinality against a keyed table, which
+    // is a write amplifier rather than a display bug. The value is still
+    // self-reported and unverified; this only makes forging it cost the shape
+    // of a real PeerId.
+    for (const networkId of ["x".repeat(128), "not a peer id", "", "0OIl".repeat(13)]) {
+      expect(
+        parseNodeMessage(
+          JSON.stringify({ id: 1, payload: { ...connectedPayload, network_id: networkId } }),
+        ),
+        networkId.slice(0, 20),
+      ).toBeNull();
     }
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ChainState, STALE_TIMEOUT_MS } from "../../src/domain/chain-state";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
+import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
 
@@ -18,7 +19,7 @@ function connected(id: number, name: string): SystemConnectedMessage {
       name,
       implementation: "Orbinum Node",
       version: "1.0.0",
-      networkId: `12D3KooW${name}`,
+      networkId: peerId(name),
     },
   };
 }

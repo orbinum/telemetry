@@ -18,6 +18,7 @@ import { NodeTable } from "../../src/domain/node-table";
 import { RollingTotal } from "../../src/domain/rolling-total";
 import { RouteTable } from "../../src/gateway-do/route-table";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
+import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
 
@@ -31,7 +32,7 @@ function connected(id: number): SystemConnectedMessage {
       name: `node-${id}`,
       implementation: "Orbinum Node",
       version: "1.0.0",
-      networkId: `12D3KooW${id}`,
+      networkId: peerId(id),
     },
   };
 }

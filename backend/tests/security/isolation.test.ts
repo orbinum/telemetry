@@ -11,6 +11,7 @@ import { RouteTable } from "../../src/gateway-do/route-table";
 import type { ChainDirectory } from "../../src/gateway-do/chain-directory";
 import type { NodeConnection } from "../../src/gateway-do/connection";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
+import { peerId } from "../fixtures/peer-id";
 
 const CHAIN_A = "0x" + "aa".repeat(32);
 const CHAIN_B = "0x" + "bb".repeat(32);
@@ -25,7 +26,7 @@ function connected(id: number, genesisHash: string, name = `node-${id}`): System
       name,
       implementation: "Orbinum Node",
       version: "1.0.0",
-      networkId: `12D3KooW${id}`,
+      networkId: peerId(id),
     },
   };
 }

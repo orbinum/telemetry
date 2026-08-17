@@ -6,7 +6,7 @@
 import { INVALID, optBoolean, optNumber, optString, reqString } from "./fields";
 import type { Maybe } from "./fields";
 import { parseHash } from "./hash";
-import { MAX_ADDRESS_LENGTH, isValidCount, isValidString } from "./limits";
+import { MAX_ADDRESS_LENGTH, isValidCount, isValidPeerId, isValidString } from "./limits";
 import type { NodeSysInfo, SystemConnectedMessage } from "./types";
 import { splitOldStyleVersion } from "./version";
 
@@ -72,11 +72,15 @@ export function parseSystemConnected(
     !isValidString(chain) ||
     !isValidString(name) ||
     !isValidString(implementation) ||
-    !isValidString(version) ||
-    !isValidString(networkId, MAX_ADDRESS_LENGTH)
+    !isValidString(version)
   ) {
     return null;
   }
+
+  // network_id is the node's PeerId, and the only field stable enough to key a
+  // node's history on. A length bound alone would let one client mint an
+  // unlimited number of distinct "nodes", so the shape is checked too.
+  if (!isValidPeerId(networkId)) return null;
 
   const validator = optString(p.validator);
   const startupTime = optString(p.startup_time);

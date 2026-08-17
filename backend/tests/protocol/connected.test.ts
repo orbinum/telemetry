@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseSystemConnected } from "../../src/protocol/connected";
+import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
 
@@ -10,7 +11,7 @@ const payload = {
   name: "validator-1",
   implementation: "Orbinum Node",
   version: "1.2.0-abcdef123-x86_64-linux-gnu",
-  network_id: "12D3KooWTest",
+  network_id: peerId("test"),
 };
 
 describe("parseSystemConnected", () => {
@@ -77,6 +78,51 @@ describe("parseSystemConnected", () => {
       delete p[field];
       expect(parseSystemConnected(1, p), `missing ${field}`).toBeNull();
     }
+  });
+
+  describe("network_id", () => {
+    // This is the field a per-node history is keyed on, so its shape is
+    // checked rather than only its length: a free 128-char string lets one
+    // client mint unlimited distinct identities.
+    it("accepts the PeerIds real nodes report", () => {
+      // Captured from a live Substrate client, and the five production nodes
+      // recorded in node-deploy's TOPOLOGY.md.
+      for (const id of [
+        "12D3KooWF4993Ex2GnKQuqEoL2CQXoMRFha2t1kWzDhiq61M7qaX",
+        "12D3KooWBzqb1AFLQJd4NooU7q6dSsYBFL85A8RPsJDLesfxHvbW",
+        "12D3KooWHLCGig6Qr3K2z9QGJrYZqUGv2ZeXJufYSQR8bQbMqb4s",
+      ]) {
+        expect(parseSystemConnected(1, { ...payload, network_id: id })?.node.networkId).toBe(id);
+      }
+    });
+
+    it("accepts a non-Ed25519 PeerId, which starts differently", () => {
+      // Every Orbinum node uses an Ed25519 key today, so every id begins
+      // `12D3KooW` — but anchoring on that would silently drop a node with an
+      // RSA key, whose id is a `Qm…` multihash instead.
+      const rsa = "QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N";
+      expect(parseSystemConnected(1, { ...payload, network_id: rsa })).not.toBeNull();
+    });
+
+    it("rejects a long random string, the write amplifier this closes", () => {
+      // Under a length-only bound this passed, and each distinct value would
+      // become another node identity in any per-node table.
+      expect(parseSystemConnected(1, { ...payload, network_id: "a".repeat(128) })).toBeNull();
+    });
+
+    it("rejects values outside the base58 alphabet", () => {
+      // 0, O, I and l are excluded from base58 precisely because they are
+      // easy to confuse — an id containing them did not come from libp2p.
+      for (const id of ["0".repeat(52), "O".repeat(52), "I".repeat(52), "l".repeat(52)]) {
+        expect(parseSystemConnected(1, { ...payload, network_id: id }), id).toBeNull();
+      }
+    });
+
+    it("rejects ids that are too short or empty", () => {
+      for (const id of ["", "12D3KooWTest", "abc"]) {
+        expect(parseSystemConnected(1, { ...payload, network_id: id }), id).toBeNull();
+      }
+    });
   });
 
   it("fails when an optional field has the wrong type", () => {

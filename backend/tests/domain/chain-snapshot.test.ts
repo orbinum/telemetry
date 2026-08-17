@@ -7,6 +7,7 @@ import {
 } from "../../src/domain/chain-snapshot";
 import { ChainState } from "../../src/domain/chain-state";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
+import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
 
@@ -30,7 +31,7 @@ function connected(id: number, name: string, opts: NodeOpts = {}): SystemConnect
       name,
       implementation: opts.implementation ?? "Orbinum Node",
       version: opts.version ?? "0.2.5",
-      networkId: `12D3KooW${name}`,
+      networkId: peerId(name),
       authority: opts.authority,
     },
   };

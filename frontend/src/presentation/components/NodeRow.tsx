@@ -44,7 +44,12 @@ export const NodeRow = memo(function NodeRow({ id, now, top, height }: NodeRowPr
               title="No new block in over 2 minutes"
             />
           )}
-          <span className="truncate">{node.name}</span>
+          {/* The PeerId rides in the title rather than a column: it is 52
+              characters no one reads at a glance, but it is the only stable
+              identifier a node has, so it belongs where it can be checked. */}
+          <span className="truncate" title={node.networkId}>
+            {node.name}
+          </span>
         </span>
       </div>
       <div className="text-muted">

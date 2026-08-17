@@ -10,6 +10,7 @@ import { MAX_NODES_PER_CONNECTION } from "../../src/config/limits";
 import type { ChainDirectory } from "../../src/gateway-do/chain-directory";
 import type { NodeConnection } from "../../src/gateway-do/connection";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
+import { peerId } from "../fixtures/peer-id";
 
 const ALLOWED = "0x" + "aa".repeat(32);
 const FOREIGN = "0x" + "bb".repeat(32);
@@ -24,7 +25,7 @@ function connected(id: number, genesisHash = ALLOWED): SystemConnectedMessage {
       name: `node-${id}`,
       implementation: "Orbinum Node",
       version: "1.0.0",
-      networkId: `12D3KooW${id}`,
+      networkId: peerId(id),
     },
   };
 }

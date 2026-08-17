@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { NodeState } from "../../src/domain/node-state";
 import type { SystemConnectedMessage, SystemIntervalMessage } from "../../src/protocol/node";
+import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
 const HASH_A = "0x" + "01".repeat(32);
@@ -15,7 +16,7 @@ const connected: SystemConnectedMessage = {
     name: "validator-1",
     implementation: "Orbinum Node",
     version: "1.2.0",
-    networkId: "12D3KooWTest",
+    networkId: peerId("test"),
   },
 };
 

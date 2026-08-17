@@ -46,6 +46,19 @@ export interface FeedNode {
   authority?: boolean;
   /** The authority's address. Only arrives via `afg.authority_set`, at verbosity ≥ 1. */
   validator?: string;
+  /**
+   * The node's libp2p PeerId, as it reports it.
+   *
+   * Unlike `id`, which is a counter that restarts with the Durable Object,
+   * this is stable across restarts and redeploys for any node whose key is
+   * fixed — which is every Orbinum node, since node-deploy pins `*_NODE_KEY`.
+   * That makes it the identity a per-node history can be keyed on.
+   *
+   * Self-reported and unverified: `/submit` is public and nothing proves the
+   * sender holds the matching private key. Treat it as a label, never as
+   * authentication.
+   */
+  networkId?: string;
   /** Unix ms (string on the node wire, number here). */
   startupTime?: number;
   peers?: number;

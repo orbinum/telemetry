@@ -34,6 +34,31 @@ a whole: the worker and the UI compile the same wire contract from
   nightly cron rolls the 60s buckets into hourly ones and prunes what is past
   the retention window.
 
+- **A node now has an identity that survives its restart.** Nothing in the
+  service did: the feed's numeric id is a counter that resets with the Durable
+  Object, and the internal key is built from socket ordering, so the same
+  machine reconnecting was indistinguishable from a new one. The libp2p PeerId
+  is the one field that holds — every Orbinum node pins its key in `.env` —
+  and it now reaches the UI, where a row's tooltip shows it.
+
+  Verified rather than assumed: a real node restarted twice with a persistent
+  base path reported one PeerId across all three runs.
+
+### Changed
+
+- **`network_id` is validated as a PeerId, not merely bounded in length.** It
+  is the identity anything per-node will be filed under, and a free
+  128-character string let a single client mint unlimited distinct identities —
+  unbounded cardinality against a keyed table, which is a write amplifier
+  rather than a display bug. The check covers the base58 alphabet and the
+  length, and deliberately not the `12D3KooW` prefix: every Orbinum node uses
+  an Ed25519 key today, but anchoring on that would silently drop a node using
+  any other key type.
+
+  It stays **self-reported and unverified** — `/submit` is public and nothing
+  proves the sender holds the matching key. The parser checks the shape, never
+  the ownership.
+
 ## [0.2.5] - 2026-08-16
 
 ### Fixed

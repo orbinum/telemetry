@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { parseNodeMessage } from "../../src/protocol/node";
+import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
 const BEST = "0x" + "cd".repeat(32);
@@ -17,7 +18,7 @@ const connectedPayload = {
   name: "validator-1",
   implementation: "Orbinum Node",
   version: "1.2.0",
-  network_id: "12D3KooWTest",
+  network_id: peerId("test"),
 };
 
 describe("envelope", () => {
