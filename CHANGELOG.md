@@ -14,6 +14,21 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Changed
 
+- **The filter row said the same thing twice, in two places.** The count of
+  hidden nodes was rendered both by the page, next to the node count, and by
+  the search box itself — absolutely positioned below the input, where it
+  escaped the row's box and overlapped the table header beneath it. The count
+  now lives only where it belongs, beside the number it qualifies, and reads
+  as one sentence: `11 nodes · 7 hidden by filter`. That second half is a
+  button now, so the way out of a filter that hides most of the list is where
+  the user is already looking, not only in the input's clear icon.
+
+  The input picks up the affordances it was missing — a fixed height so it
+  aligns with the count instead of sitting a few pixels off, a rounded border
+  matching the cards around it, a hover state, and a focus ring on the accent
+  colour rather than the muted one. Below `sm` the row stacks: the input takes
+  the full width and the count moves under it.
+
 - **The node list shows every node.** The list rendered into its own scroll
   area, capped at the viewport minus a hardcoded 22rem of chrome, with rows
   virtualized inside it. On a chain with 100 validators that meant roughly

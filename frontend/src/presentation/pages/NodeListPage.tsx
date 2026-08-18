@@ -6,7 +6,13 @@
 import { NodeSearch } from "../components/NodeSearch";
 import { NodeTable } from "../components/NodeTable";
 import { EmptyState, LoadingState } from "../components/ui/EmptyState";
-import { useFeedStatus, useHiddenCount, useNodeOrder, useQuery } from "../../stores/feedStore";
+import {
+  setQuery,
+  useFeedStatus,
+  useHiddenCount,
+  useNodeOrder,
+  useQuery,
+} from "../../stores/feedStore";
 
 export function NodeListPage() {
   const order = useNodeOrder();
@@ -16,12 +22,24 @@ export function NodeListPage() {
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <p className="font-sans text-xs text-muted">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <p className="order-2 font-sans text-xs text-muted sm:order-1">
           {order.length} {order.length === 1 ? "node" : "nodes"}
-          {hidden > 0 && ` · ${hidden} hidden by filter`}
+          {hidden > 0 && (
+            <>
+              {" · "}
+              <button
+                onClick={() => setQuery("")}
+                className="underline decoration-dotted underline-offset-2 transition-colors hover:text-accent"
+              >
+                {hidden} hidden by filter
+              </button>
+            </>
+          )}
         </p>
-        <NodeSearch />
+        <div className="order-1 sm:order-2">
+          <NodeSearch />
+        </div>
       </div>
 
       {/* An empty list means two different things depending on the socket: no
