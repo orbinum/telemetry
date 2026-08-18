@@ -12,6 +12,8 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-18
+
 ### Changed
 
 - **The filter row said the same thing twice, in two places.** The count of
