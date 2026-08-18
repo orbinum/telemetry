@@ -67,32 +67,20 @@
     --node-columns: minmax(9rem, 1.3fr) minmax(10rem, 1.4fr) minmax(7rem, 1fr) 5rem 4.5rem 6rem
       minmax(7rem, 0.9fr) 7rem 8rem 6.5rem 7rem minmax(8rem, 1fr);
     /* Tall enough for the tallest cell content (the 20px copy button plus
-       padding). Keep in sync with ROW_HEIGHT in NodeTable.tsx. */
+       padding). */
     --node-row-height: 36px;
-    /* Everything stacked above the list: title, stat cards, tabs, the count
-       and search row. Read by .node-grid-scroll. */
-    --node-chrome: 22rem;
     font-size: 0.8125rem;
     min-width: 72rem;
   }
 
-  /* Row height is fixed here and mirrored by ROW_HEIGHT in NodeTable.tsx: the
-     virtualizer positions rows absolutely, so a row that renders taller than
-     it is told leaves the container permanently scrollable — even with a
-     single row. Cells must not add height on their own. */
+  /* Fixed row height keeps the list scannable; cells must not add height on
+     their own. The list has no inner scroll — every node renders and the page
+     scrolls. */
   .node-grid-row {
     display: grid;
     grid-template-columns: var(--node-columns);
     align-items: center;
     height: var(--node-row-height);
-  }
-
-  /* The list's own scroll area. The subtrahend is the chrome above it — page
-     header, search, stat cards — which stacks tighter on a narrow screen, so
-     the media queries below shrink it rather than leaving a phone with a
-     four-row list. The floor keeps the list usable on a short viewport. */
-  .node-grid-scroll {
-    max-height: max(18rem, 100dvh - var(--node-chrome, 22rem));
   }
 
   .node-grid-head {
@@ -171,15 +159,6 @@
       /* name | best | last block */
       --node-columns: minmax(8rem, 1.6fr) 6rem 6.5rem;
       min-width: 0;
-    }
-
-    /* The stat cards wrap from one row of four to two rows of two below `sm`,
-       so the chrome above the list gets *taller* exactly where the viewport is
-       shortest. Above `sm` they are back on one row and this does not apply. */
-    @media (width < 40rem) {
-      .node-grid {
-        --node-chrome: 26rem;
-      }
     }
 
     /* implementation, validator, peers, txs, hash, block time, propagation,

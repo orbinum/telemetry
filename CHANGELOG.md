@@ -12,6 +12,23 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Changed
+
+- **The node list shows every node.** The list rendered into its own scroll
+  area, capped at the viewport minus a hardcoded 22rem of chrome, with rows
+  virtualized inside it. On a chain with 100 validators that meant roughly
+  fifteen rows visible and the other eighty-five behind an inner scrollbar the
+  page gave no hint of — and the cap was a guess about layout that a stat-card
+  wrap or a longer title silently invalidated. Rows now render in full and the
+  page itself scrolls, so the row count is the node count.
+
+  Virtualization bought a constant-size DOM for lists in the thousands, which
+  is not the shape of an Orbinum chain; dropping it removes
+  `@tanstack/react-virtual`, the absolute row positioning, and the fixed row
+  height that had to be kept in sync between the CSS and the component. The
+  header still sticks — to the viewport now rather than to the inner
+  container.
+
 ## [0.3.0] - 2026-08-17
 
 **The service remembers.** Every number it knew was live and only live: the
@@ -316,7 +333,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/orbinum/telemetry/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/orbinum/telemetry/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/orbinum/telemetry/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/orbinum/telemetry/compare/v0.2.3...v0.2.4

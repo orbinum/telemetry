@@ -2,8 +2,8 @@
  * One node row. Memo'd and subscribed to its own id, so a delta for one node
  * re-renders one row instead of the table (plan §8, point 3).
  *
- * A grid row, not a <tr>: virtualized rows are absolutely positioned, which
- * table layout cannot express. Column widths come from `.node-grid`.
+ * A grid row, not a <tr>: one shared column template keeps every row aligned
+ * with the header. Column widths come from `.node-grid`.
  */
 
 import { memo } from "react";
@@ -22,20 +22,14 @@ import {
 interface NodeRowProps {
   id: number;
   now: number;
-  /** Absolute offset from the virtualizer, in pixels. */
-  top: number;
-  height: number;
 }
 
-export const NodeRow = memo(function NodeRow({ id, now, top, height }: NodeRowProps) {
+export const NodeRow = memo(function NodeRow({ id, now }: NodeRowProps) {
   const node = useNode(id);
   if (node === undefined) return null;
 
   return (
-    <div
-      className="node-grid-row absolute inset-x-0"
-      style={{ transform: `translateY(${top}px)`, height }}
-    >
+    <div className="node-grid-row">
       <div className="font-sans font-medium text-accent">
         <span className="flex items-center gap-2">
           {node.stale && (
