@@ -115,8 +115,9 @@ history had been accumulating in D1 behind an endpoint nobody called.
   `--enable-hardware-benchmarks` outright and never emits the message, because
   nothing in its code wires up `sc-sysinfo`. That is a change in the node repo,
   not here and not in `node-deploy` — adding the flag to a compose file would
-  stop validators from starting. `HWBENCH_PLAN.md` records the evidence, the
-  wiring the node needs, and the order the four steps have to happen in.
+  stop validators from starting, since the binary rejects the argument. The
+  parser stays as it is: it costs nothing and is ready for the day a node
+  sends one.
 
 - **Validator addresses were missing in production, and the code was not at
   fault.** `afg.authority_set` is only emitted at telemetry verbosity 1 and
