@@ -14,6 +14,7 @@ import type { FeedNode } from "../../../shared/protocol/feed";
 export type SortKey =
   | "name"
   | "implementation"
+  | "nodeType"
   | "validator"
   | "peers"
   | "txcount"
@@ -41,7 +42,8 @@ export function matchesQuery(node: FeedNode, query: string): boolean {
   if (query === "") return true;
   return (
     node.name.toLowerCase().includes(query) ||
-    (node.validator?.toLowerCase().includes(query) ?? false)
+    (node.validator?.toLowerCase().includes(query) ?? false) ||
+    node.nodeType.includes(query)
   );
 }
 
@@ -66,6 +68,8 @@ function textValue(node: FeedNode, key: SortKey): string | undefined {
       return node.name;
     case "implementation":
       return `${node.implementation} ${node.version}`;
+    case "nodeType":
+      return node.nodeType;
     case "validator":
       return node.validator;
     case "location":
@@ -144,7 +148,11 @@ export function nextSort(current: Sort, key: SortKey): Sort {
   }
   // Text reads best A→Z; numbers read best largest-first.
   const isText =
-    key === "name" || key === "implementation" || key === "validator" || key === "location";
+    key === "name" ||
+    key === "implementation" ||
+    key === "nodeType" ||
+    key === "validator" ||
+    key === "location";
   return { key, direction: isText ? "asc" : "desc" };
 }
 
@@ -153,6 +161,7 @@ export function nextSort(current: Sort, key: SortKey): Sort {
 const SORT_KEYS = new Set<string>([
   "name",
   "implementation",
+  "nodeType",
   "validator",
   "peers",
   "txcount",

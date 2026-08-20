@@ -12,6 +12,56 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Changed
+
+- **The validator column was two columns wearing one hat.** It rendered the
+  SS58 address when there was one, the literal word `validator` when there was
+  not, and a dash otherwise — so a single cell answered both "what is this
+  node" and "which account is behind it". Sorting it sorted by address alone,
+  which buried authorities without one at the bottom of the list under a header
+  that said Validator, and filtering could never match the word `rpc` at all,
+  since the query only ever saw addresses.
+
+  It is now **Type** (`validator` or `rpc`) and **Address** (the SS58 string).
+  Each sorts and filters by what it actually shows, and typing `rpc` or
+  `validator` into the filter finally does the obvious thing.
+
+  The role comes from the node's own `authority` flag, never from its name:
+  Orbinum's validators run with `--rpc-port` as well, so a node that serves RPC
+  and authors blocks is a validator, and the flag is the half the node actually
+  reports.
+
+### Added
+
+- **The validator address survives losing the memory that held it.** It arrives
+  in exactly one message, `afg.authority_set`, sent milliseconds after a node
+  connects and never sent again. Anything that cleared in-memory state — a
+  ChainDO eviction, a gateway redeploy, the node restarting — dropped it for
+  good, because the eviction path could only replay the cached
+  `system.connected`, which does not carry it. The address would appear, then
+  silently vanish hours later with nothing to explain it.
+
+  A `validator` column on `node_sessions` (migration `0003`) now records it as
+  it arrives, and a reconnecting node is seeded from the last session that had
+  one. Both writes go through `ctx.waitUntil` like the session rows beside
+  them: a slow D1 costs a column in the UI, never the live feed. The lookup
+  only fills a gap and re-checks after reading, so a stored address can never
+  overwrite one the node just reported.
+
+  This also covers the case the migration was not written for: a validator
+  reporting at telemetry verbosity 0 never sends `afg.authority_set` at all, so
+  its address would otherwise stay blank forever. Once that PeerId has reported
+  one, it keeps showing.
+
+### Fixed
+
+- **Validator addresses were missing in production, and the code was not at
+  fault.** `afg.authority_set` is only emitted at telemetry verbosity 1 and
+  above, and every Orbinum node reported at `0`, so the address never arrived
+  to be shown. The fix is in `node-deploy`, where validators now report at `1`;
+  RPC nodes stay at `0`, having no address to send and no reason to pay for the
+  per-block chatter the higher level adds.
+
 ## [0.3.1] - 2026-08-18
 
 ### Changed

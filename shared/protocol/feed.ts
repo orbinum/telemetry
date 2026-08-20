@@ -26,6 +26,9 @@ export interface FeedGeo {
   longitude?: number;
 }
 
+/** The role a node plays, as the table reports it. */
+export type NodeType = "validator" | "rpc";
+
 /** One node row, as the UI renders it. */
 export interface FeedNode {
   /** Numeric id, unique within a chain feed session. */
@@ -44,6 +47,13 @@ export interface FeedNode {
    * validator look like a full node.
    */
   authority?: boolean;
+  /**
+   * What the node is, for the Type column: `authority` decides it, and every
+   * non-authority is an RPC node. The protocol has no RPC signal of its own,
+   * so this is Orbinum's own two-role split rather than something the node
+   * reports.
+   */
+  nodeType: NodeType;
   /** The authority's address. Only arrives via `afg.authority_set`, at verbosity ≥ 1. */
   validator?: string;
   /**

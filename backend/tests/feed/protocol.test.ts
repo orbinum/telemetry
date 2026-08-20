@@ -7,6 +7,7 @@ const node: FeedNode = {
   name: "validator-1",
   implementation: "Orbinum Node",
   version: "1.0.0",
+  nodeType: "validator",
   stale: false,
   best: { hash: "0x" + "ab".repeat(32), height: 42 },
   propagationTime: 0,

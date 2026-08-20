@@ -14,6 +14,7 @@ function node(id: number, overrides: Partial<FeedNode> = {}): FeedNode {
     name: `node-${id}`,
     implementation: "Orbinum Node",
     version: "1.0.0",
+    nodeType: "rpc",
     stale: false,
     ...overrides,
   };

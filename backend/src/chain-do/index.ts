@@ -23,7 +23,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { FeedBroadcaster } from "./feed-broadcaster";
 import { writeSnapshot } from "../db/chain-history";
-import { closeSessions, openSession } from "../db/node-sessions";
+import {
+  closeSessions,
+  openSession,
+  readLastValidatorAddress,
+  recordValidatorAddress,
+} from "../db/node-sessions";
 import { ChainState, NODE_TIMEOUT_MS } from "../domain/chain-state";
 import { FeedHub } from "../feed/hub";
 import type { ChainSnapshot } from "../domain/chain-snapshot";
@@ -57,6 +62,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     this.hub.markChainChanged();
     this.feed.schedule(this.chain);
     this.recordSessionStart(this.chain.getById(id));
+    this.restoreValidator(id);
     await this.armReaper();
   }
 
@@ -71,6 +77,9 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     if (id !== undefined) {
       this.hub.markUpdated(id);
       this.feed.schedule(this.chain);
+      if (msg.msg === "afg.authority_set") {
+        this.recordValidator(this.chain.getById(id), msg.authorityId);
+      }
     }
     return true;
   }
@@ -118,6 +127,64 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
       writeSnapshot(db, snapshot).catch((error: unknown) => {
         console.error("chain history write failed", error);
       }),
+    );
+  }
+
+  /**
+   * Persist the address a node just announced. Best-effort, like the session
+   * writes: losing it costs a column in the UI, not the feed.
+   */
+  private recordValidator(node: NodeState | undefined, address: string): void {
+    const db = this.env.DB;
+    if (db === undefined || node === undefined || this.chain === undefined) return;
+    const { networkId } = node.details;
+    if (networkId === undefined) return;
+    this.ctx.waitUntil(
+      recordValidatorAddress(
+        db,
+        this.chain.genesisHash,
+        networkId,
+        node.connectedAt,
+        address,
+      ).catch((error: unknown) => {
+        console.error("validator address write failed", error);
+      }),
+    );
+  }
+
+  /**
+   * Seed a node's address from the last session that had one.
+   *
+   * This is what makes the Address column survive a verbosity-0 network: the
+   * node never sends `afg.authority_set` at all, so without the lookup the
+   * column is empty for every validator, forever. It also covers an eviction
+   * or a gateway redeploy, where the message did arrive but the memory holding
+   * it is gone.
+   *
+   * Only fills a gap — a node that already reported an address this session
+   * keeps it, so a stale row can never overwrite live data.
+   */
+  private restoreValidator(id: number): void {
+    const db = this.env.DB;
+    if (db === undefined || this.chain === undefined) return;
+    const node = this.chain.getById(id);
+    const networkId = node?.details.networkId;
+    if (node === undefined || networkId === undefined || node.validator !== undefined) return;
+
+    const genesisHash = this.chain.genesisHash;
+    this.ctx.waitUntil(
+      readLastValidatorAddress(db, genesisHash, networkId)
+        .then((address) => {
+          // Re-check: afg may have landed while D1 was being read, and the
+          // live message is the more current of the two.
+          if (address === undefined || node.validator !== undefined) return;
+          node.setValidatorAddress(address);
+          this.hub.markUpdated(id);
+          if (this.chain !== undefined) this.feed.schedule(this.chain);
+        })
+        .catch((error: unknown) => {
+          console.error("validator address read failed", error);
+        }),
     );
   }
 

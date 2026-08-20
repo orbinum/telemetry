@@ -33,6 +33,7 @@ export interface NodeSession {
   implementation?: string;
   isAuthority: boolean;
   country?: string;
+  validator?: string;
 }
 
 /** Uptime for one node over a window, derived from its sessions. */
@@ -58,6 +59,7 @@ interface SessionRow {
   implementation: string | null;
   is_authority: number;
   country: string | null;
+  validator: string | null;
 }
 
 interface UptimeRow {
@@ -81,6 +83,7 @@ function toSession(row: SessionRow): NodeSession {
     implementation: row.implementation ?? undefined,
     isAuthority: row.is_authority === 1,
     country: row.country ?? undefined,
+    validator: row.validator ?? undefined,
   };
 }
 
@@ -96,8 +99,8 @@ export async function openSession(db: D1Database, genesis: string, node: NodeSta
     .prepare(
       `INSERT OR IGNORE INTO node_sessions (
          network_id, genesis, connected_at, name, version, implementation,
-         is_authority, country, sysinfo
-       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+         is_authority, country, sysinfo, validator
+       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
     )
     .bind(
       node.details.networkId,
@@ -109,8 +112,58 @@ export async function openSession(db: D1Database, genesis: string, node: NodeSta
       node.details.authority === true ? 1 : 0,
       node.geo?.country ?? null,
       node.details.sysinfo === undefined ? null : JSON.stringify(node.details.sysinfo),
+      node.validator ?? null,
     )
     .run();
+}
+
+/**
+ * Record the address a node just announced, on the session that is still open.
+ *
+ * Called when `afg.authority_set` arrives, which is once per connection and
+ * milliseconds after the session row is written — hence an UPDATE rather than
+ * a column on the insert.
+ */
+export async function recordValidatorAddress(
+  db: D1Database,
+  genesis: string,
+  networkId: string,
+  connectedAt: number,
+  address: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE node_sessions SET validator = ?1
+       WHERE network_id = ?2 AND genesis = ?3 AND connected_at = ?4`,
+    )
+    .bind(address, networkId, genesis, connectedAt)
+    .run();
+}
+
+/**
+ * The last address this node was seen with, if any.
+ *
+ * The fallback for verbosity 0 and for evictions alike: at 0 the node never
+ * sends afg at all, so without this the Address column stays empty forever
+ * even though the address was recorded months ago.
+ *
+ * Ordered by session, so a node that changed its validator account reports the
+ * newer one rather than whichever row the engine happened to reach first.
+ */
+export async function readLastValidatorAddress(
+  db: D1Database,
+  genesis: string,
+  networkId: string,
+): Promise<string | undefined> {
+  const row = await db
+    .prepare(
+      `SELECT validator FROM node_sessions
+       WHERE network_id = ?1 AND genesis = ?2 AND validator IS NOT NULL
+       ORDER BY connected_at DESC LIMIT 1`,
+    )
+    .bind(networkId, genesis)
+    .first<{ validator: string }>();
+  return row?.validator ?? undefined;
 }
 
 /**
@@ -204,7 +257,7 @@ export async function readSessions(
   const { results } = await db
     .prepare(
       `SELECT network_id, genesis, connected_at, disconnected_at, name, version,
-              implementation, is_authority, country
+              implementation, is_authority, country, validator
        FROM node_sessions
        WHERE network_id = ?1 AND genesis = ?2 AND connected_at >= ?3
        ORDER BY connected_at DESC`,

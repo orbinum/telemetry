@@ -8,6 +8,7 @@ function node(id: number, overrides: Partial<FeedNode> = {}): FeedNode {
     name: `node-${id}`,
     implementation: "Orbinum Node",
     version: "1.0.0",
+    nodeType: "rpc",
     stale: false,
     ...overrides,
   };
@@ -31,14 +32,14 @@ describe("computeStatistics", () => {
     expect(stats.location.get("CL")).toBe(1);
   });
 
-  it("splits validators from full nodes by role, not by address", () => {
+  it("splits nodes by type, which the backend derives from the role flag", () => {
     const stats = computeStatistics([
-      node(1, { authority: true }),
-      node(2, { authority: true, validator: "5F" }),
+      node(1, { nodeType: "validator" }),
+      node(2, { nodeType: "validator", validator: "5F" }),
       node(3),
     ]);
     expect(stats.validatorStatus.get("validator")).toBe(2);
-    expect(stats.validatorStatus.get("full node")).toBe(1);
+    expect(stats.validatorStatus.get("rpc")).toBe(1);
   });
 
   it("computes medians over the nodes that reported a value", () => {

@@ -64,13 +64,13 @@
   /* Fixed widths on the numeric columns are sized to their uppercase headers
      ("PROPAGATION" is the widest); the text columns take the slack. */
   .node-grid {
-    --node-columns: minmax(9rem, 1.3fr) minmax(10rem, 1.4fr) minmax(7rem, 1fr) 5rem 4.5rem 6rem
-      minmax(7rem, 0.9fr) 7rem 8rem 6.5rem 7rem minmax(8rem, 1fr);
+    --node-columns: minmax(9rem, 1.3fr) minmax(10rem, 1.4fr) 5.5rem minmax(7rem, 1fr) 5rem 4.5rem
+      6rem minmax(7rem, 0.9fr) 7rem 8rem 6.5rem 7rem minmax(8rem, 1fr);
     /* Tall enough for the tallest cell content (the 20px copy button plus
        padding). */
     --node-row-height: 36px;
     font-size: 0.8125rem;
-    min-width: 72rem;
+    min-width: 77.5rem;
   }
 
   /* Fixed row height keeps the list scannable; cells must not add height on
