@@ -12,6 +12,30 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-08-20
+
+### Added
+
+- **The map says it is loading instead of showing an empty box.** Opening the
+  Map tab fetches a 950 kB chunk and then a basemap from CARTO, and until both
+  arrive the container was simply blank — indistinguishable from the failure
+  fixed in `0.4.2`, where a blank map was exactly the symptom. On a slow
+  connection the honest reading of that blank box was "this is broken again".
+
+  A spinner now covers the container until MapLibre reports `load`, which is
+  the event that means the style is parsed and the first tiles are in, rather
+  than merely that the module arrived. It reuses the same `LoadingState` as the
+  node list, so waiting looks the same everywhere in the app.
+
+  The overlay sits on top of the map rather than replacing it: MapLibre
+  measures the element it is handed, and a container that is unmounted while
+  loading reports zero width and never requests a tile — the spinner would have
+  caused the blankness it was added to explain. It also clears on the map's
+  `error` event, since a style request that fails never fires `load` and would
+  otherwise leave the spinner turning for good; the markers are drawn from our
+  own data, so that case degrades to "no basemap" rather than "forever
+  loading". The container carries `aria-busy` for the same state.
+
 ## [0.4.2] - 2026-08-20
 
 ### Fixed
@@ -551,7 +575,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/orbinum/telemetry/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/orbinum/telemetry/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/orbinum/telemetry/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/orbinum/telemetry/compare/v0.3.1...v0.4.0
