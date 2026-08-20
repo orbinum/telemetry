@@ -33,6 +33,27 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Added
 
+- **A map of where the nodes are.** The Location column and its histogram both
+  answer "which countries", and neither can show what an operator actually
+  wants to know: how concentrated the network is. A new Map tab plots one
+  marker per location, its area scaled to the node count, so eight nodes in one
+  datacenter read differently from eight cities running one each — and the
+  gaps, whole continents with nothing on them, read at a glance.
+
+  The coordinates were already arriving. Cloudflare attaches them to every
+  upgrade request and they have ridden the feed since the first release; no
+  frontend code had ever read them, so this needed no backend change at all.
+  Markers are coloured by role and carry the count where it fits; hovering one
+  names the place. Nodes whose coordinates Cloudflare omitted are excluded
+  rather than parked at (0, 0) — which is in the Atlantic, and would read as a
+  real cluster — and the panel says how many were left out.
+
+  MapLibre over CARTO's basemap, loaded lazily: the main bundle is unchanged,
+  and the map's weight is paid only by whoever opens the tab. This is the one
+  view that talks to a third party, so the tile host sees the IP of anyone who
+  opens it — nothing about a node is sent, but the request happens. Swapping in
+  a self-hosted basemap later is a one-line change.
+
 - **The validator address survives losing the memory that held it.** It arrives
   in exactly one message, `afg.authority_set`, sent milliseconds after a node
   connects and never sent again. Anything that cleared in-memory state — a
@@ -54,6 +75,14 @@ a whole: the worker and the UI compile the same wire contract from
   one, it keeps showing.
 
 ### Fixed
+
+- **MapLibre rendered nothing under `vite dev`, silently.** It decodes vector
+  tiles in a Web Worker loaded from its own bundle; Vite's dependency
+  pre-bundling rewrote that path, the worker 404'd, and a map that cannot
+  decode tiles never requests any — so the basemap was blank with no error
+  anywhere, because the failure happened inside a worker nobody was listening
+  to. `optimizeDeps.exclude` fixes it. Production builds were never affected,
+  which is what made it look like a rendering bug rather than a dev-server one.
 
 - **Validator addresses were missing in production, and the code was not at
   fault.** `afg.authority_set` is only emitted at telemetry verbosity 1 and
