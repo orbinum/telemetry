@@ -8,6 +8,8 @@ import { AppLayout } from "../layouts/AppLayout";
 import { ChainLayout } from "../layouts/ChainLayout";
 import { NodeListPage } from "../pages/NodeListPage";
 import { StatsPage } from "../pages/StatsPage";
+import { ChunkLoadError } from "./ChunkLoadError";
+import { lazyWithReload } from "./lazyWithReload";
 
 export const router = createBrowserRouter([
   {
@@ -22,10 +24,12 @@ export const router = createBrowserRouter([
           { path: "/chain/:genesisHash/stats", element: <StatsPage /> },
           {
             path: "/chain/:genesisHash/map",
-            lazy: async () => {
+            lazy: lazyWithReload(async () => {
               const { MapPage } = await import("../pages/MapPage");
               return { Component: MapPage };
-            },
+            }),
+            // A chunk that fails even after the reload is blocked, not stale.
+            errorElement: <ChunkLoadError />,
           },
         ],
       },

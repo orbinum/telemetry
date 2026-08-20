@@ -12,6 +12,38 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-20
+
+### Fixed
+
+- **Opening the Map tab after a deploy showed the router's raw error screen.**
+  The map is the one route loaded with a dynamic `import()`, and its chunk
+  carries a content hash that changes on every build. A tab left open across a
+  deploy still holds the previous `index.html`, so its next visit to the tab
+  asked for a chunk that no longer exists. Pages answers anything it cannot
+  find with the SPA fallback, so the request returned `index.html` with a 200,
+  and the browser rejected the HTML it was handed in place of a module:
+
+      Failed to load module script: Expected a JavaScript-or-Wasm module script
+      but the server responded with a MIME type of "text/html".
+
+  The MIME complaint reads like a server misconfiguration and is not one. The
+  headers were correct throughout — `application/javascript` on `/assets/*`,
+  `no-cache` on `index.html` — and every hashed asset that exists is still
+  served correctly. The 200 is the fallback doing its job for an asset that
+  was deleted by the very deploy the open tab had not yet seen.
+
+  A failed chunk now reloads the page once, which fetches the current
+  `index.html` and resolves the new hash. The reload is recorded in
+  `sessionStorage`, so a failure that survives it is not staleness and is not
+  reloaded again — that path renders a message instead of looping. The other
+  cause of the same failure is an extension blocking the request
+  (`net::ERR_BLOCKED_BY_CLIENT`), which no reload can fix, so the message names
+  it: the fix belongs to the reader, not to the server.
+
+  Only the lazy chunk is recoverable this way. If the main bundle is what gets
+  blocked, no application code is running to notice.
+
 ## [0.4.0] - 2026-08-20
 
 **The dashboard shows what it already knew.** Three things the service had been
@@ -464,7 +496,9 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/orbinum/telemetry/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/orbinum/telemetry/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/orbinum/telemetry/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/orbinum/telemetry/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/orbinum/telemetry/compare/v0.2.4...v0.2.5
