@@ -76,6 +76,22 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Fixed
 
+- **Wide history windows answered with nothing for any chain younger than a
+  month.** `GET /history?window=7d` and `30d` read the hourly rollup, and an
+  hour only reaches that table once it falls out of the raw 60s buckets — 30
+  days later. So a chain three days old returned zero points, which reads as
+  "this chain has no history" rather than "this chain is three days old". Not
+  an edge case: it is the normal state for the whole first month of any chain's
+  life, mainnet included at launch, and exactly when the history is most looked
+  at.
+
+  Both windows now read the rollup *and* the raw buckets, folding the raw half
+  into the same hour groups the rollup uses so a point does not shift the day
+  its hour is finally rolled up. Against production's three days of data the
+  two windows went from 0 points to 74. The response also gained a `covers`
+  field naming the range actually returned, so a chart can label its axis with
+  what exists instead of implying a month that was never recorded.
+
 - **MapLibre rendered nothing under `vite dev`, silently.** It decodes vector
   tiles in a Web Worker loaded from its own bundle; Vite's dependency
   pre-bundling rewrote that path, the worker 404'd, and a map that cannot

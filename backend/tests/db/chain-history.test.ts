@@ -10,7 +10,12 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { pruneHistory, readHistory, writeSnapshot } from "../../src/db/chain-history";
+import {
+  pruneHistory,
+  readHistory,
+  readHourlyHistory,
+  writeSnapshot,
+} from "../../src/db/chain-history";
 import type { ChainSnapshot } from "../../src/domain/chain-snapshot";
 
 const GENESIS = "0x" + "ab".repeat(32);
@@ -210,5 +215,52 @@ describe("pruneHistory", () => {
 
     expect(batches[0][0].params).toEqual([now - 1000]);
     expect(batches[0][1].params).toEqual([now - 1000]);
+  });
+});
+
+describe("readHourlyHistory", () => {
+  it("reads the raw buckets too, not only the rollup", async () => {
+    // An hour only reaches chain_history_hourly once it falls out of the raw
+    // table — 30 days later. A rollup-only query therefore answers "30d" with
+    // nothing for any chain younger than the retention window, which reads as
+    // "no history" rather than "not that much history yet".
+    const { db, calls } = fakeDb();
+    await readHourlyHistory(db, GENESIS, 1000);
+
+    expect(calls[0].sql).toContain("chain_history_hourly");
+    expect(calls[0].sql).toContain("FROM chain_history ");
+  });
+
+  it("folds raw rows into the same hour buckets the rollup uses", async () => {
+    // Same expression as pruneHistory, so a point does not move the day its
+    // hour is finally rolled up.
+    const { db, calls } = fakeDb();
+    await readHourlyHistory(db, GENESIS, 1000);
+
+    expect(calls[0].sql).toContain("bucket / 3600000 * 3600000");
+    expect(calls[0].sql).toContain("GROUP BY bucket / 3600000");
+  });
+
+  it("prefers the rollup where an hour exists in both tables", async () => {
+    // Both can hold the same hour while a prune is in flight; counting it
+    // twice would put two points on one timestamp.
+    const { db, calls } = fakeDb();
+    await readHourlyHistory(db, GENESIS, 1000);
+
+    expect(calls[0].sql).toContain("NOT IN (SELECT bucket FROM rolled)");
+  });
+
+  it("bounds both halves by the same window", async () => {
+    const { db, calls } = fakeDb();
+    await readHourlyHistory(db, GENESIS, 12345);
+
+    expect(calls[0].params).toEqual([GENESIS, 12345]);
+  });
+
+  it("returns points in bucket order", async () => {
+    const { db, calls } = fakeDb();
+    await readHourlyHistory(db, GENESIS, 0);
+
+    expect(calls[0].sql.trimEnd().endsWith("ORDER BY bucket")).toBe(true);
   });
 });
