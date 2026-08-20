@@ -154,44 +154,50 @@
      choice made on a desktop still holds when the same page is opened narrow.
      What is lost is the ability to *change* to one of those sorts, which is a
      fair trade for a header that fits. */
-  @media (width < 64rem) {
+  @media (width < 48rem) {
     .node-grid {
       /* name | best | last block */
       --node-columns: minmax(8rem, 1.6fr) 6rem 6.5rem;
       min-width: 0;
     }
 
-    /* implementation, validator, peers, txs, hash, block time, propagation,
-       finalized, location */
+    /* Everything except name (1), best (7) and last block (12): so
+       implementation, type, address, peers, txs, hash, block time,
+       propagation, finalized, location. */
     .node-grid-row > *:nth-child(2),
     .node-grid-row > *:nth-child(3),
     .node-grid-row > *:nth-child(4),
     .node-grid-row > *:nth-child(5),
-    .node-grid-row > *:nth-child(7),
+    .node-grid-row > *:nth-child(6),
     .node-grid-row > *:nth-child(8),
     .node-grid-row > *:nth-child(9),
     .node-grid-row > *:nth-child(10),
-    .node-grid-row > *:nth-child(12) {
+    .node-grid-row > *:nth-child(11),
+    .node-grid-row > *:nth-child(13) {
       display: none;
     }
   }
 
   /* Between phone and desktop there is room for the identity and health
-     columns, but not for the diagnostic ones. */
-  @media (64rem <= width < 80rem) {
+     columns, but not for the diagnostic ones. The floor is 48rem rather than
+     64rem because a landscape tablet has room for all seven, and the
+     three-column phone layout wastes most of its width there. */
+  @media (48rem <= width < 80rem) {
     .node-grid {
-      /* name | implementation | peers | best | block time | last block */
-      --node-columns: minmax(9rem, 1.4fr) minmax(8rem, 1.2fr) 5rem 6rem 7rem 7rem;
+      /* name | implementation | type | peers | best | block time | last block */
+      --node-columns: minmax(6rem, 1.2fr) minmax(5.5rem, 1fr) 5.75rem 4rem 6rem 7rem 7rem;
       min-width: 0;
     }
 
-    /* validator, txs, hash, propagation, finalized, location */
-    .node-grid-row > *:nth-child(3),
-    .node-grid-row > *:nth-child(5),
-    .node-grid-row > *:nth-child(7),
-    .node-grid-row > *:nth-child(9),
+    /* address (4), txs (6), hash (8), propagation (10), finalized (11),
+       location (13). Type stays: it is one short word and it is the column
+       most people are scanning for. */
+    .node-grid-row > *:nth-child(4),
+    .node-grid-row > *:nth-child(6),
+    .node-grid-row > *:nth-child(8),
     .node-grid-row > *:nth-child(10),
-    .node-grid-row > *:nth-child(12) {
+    .node-grid-row > *:nth-child(11),
+    .node-grid-row > *:nth-child(13) {
       display: none;
     }
   }

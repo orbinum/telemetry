@@ -16,12 +16,45 @@
  */
 
 import { useEffect, useRef } from "react";
-import { AttributionControl, Map as MapLibreMap, NavigationControl, Popup } from "maplibre-gl";
+import {
+  AttributionControl,
+  Map as MapLibreMap,
+  NavigationControl,
+  Popup,
+  config as maplibreConfig,
+} from "maplibre-gl";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { useEffectiveTheme } from "../../stores/themeStore";
 import type { FeatureCollection } from "geojson";
 import type { GeoJSONSource, MapLayerMouseEvent } from "maplibre-gl";
 import type { MapPoint } from "../../domain/map-points";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+/**
+ * MapLibre decodes vector tiles in a Web Worker it loads itself, resolving
+ * `./maplibre-gl-worker.mjs` against its own module URL. Nothing imports that
+ * file, so the bundler never emits it, and the request lands on `/assets/` with
+ * no such asset behind it — which Pages answers with the SPA fallback:
+ *
+ *   Failed to load module script: The server responded with a non-JavaScript
+ *   MIME type of "text/html".
+ *
+ * A map that cannot decode tiles stops requesting them, so the failure shows up
+ * as a blank basemap rather than an error on the page.
+ *
+ * The import is what makes the file reachable: it is a static reference, so the
+ * worker is emitted and hashed like any other asset, and `WORKER_URL` hands
+ * MapLibre the built path instead of its own guess. Set before any Map is
+ * constructed, since the worker pool is spun up with the first instance.
+ *
+ * `?worker&url` and not a plain `?url`: the worker is itself an ES module that
+ * imports `./maplibre-gl-shared.mjs`, and `?url` copies only the file named,
+ * leaving that sibling unemitted. The worker then loads, fails its own import,
+ * and dies — with no error on the page, because a map whose worker is gone
+ * simply stops requesting tiles and renders an empty basemap. `?worker` bundles
+ * the dependency in, so the emitted file stands alone.
+ */
+maplibreConfig.WORKER_URL = maplibreWorkerUrl;
 
 interface NodeMapProps {
   points: MapPoint[];

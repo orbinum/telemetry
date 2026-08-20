@@ -12,6 +12,61 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-20
+
+### Fixed
+
+- **The map showed an empty basemap in production, and the console error named
+  the wrong culprit.** It reported a module served as `text/html`:
+
+      /assets/maplibre-gl-worker.mjs
+      Failed to load module script: The server responded with a non-JavaScript
+      MIME type of "text/html".
+
+  MapLibre decodes vector tiles in a Web Worker whose URL it resolves itself,
+  against its own module URL. No import points at that file, so the bundler
+  never emitted it, and the request reached `/assets/` with nothing behind it —
+  which Pages answers with the SPA fallback, hence HTML where a module was
+  expected. The same class of miss as the `0.4.1` fix, from the opposite
+  direction: there an asset had been deleted, here it was never built.
+
+  Pointing MapLibre's `WORKER_URL` at a real bundled asset fixes it. What that
+  took was not the obvious import: `?url` emits only the file it names, and the
+  worker is itself a module importing `./maplibre-gl-shared.mjs`, so it loaded,
+  failed that import, and died. `?worker&url` bundles the dependency in, which
+  is visible in the build — the emitted worker goes from 18 kB to 470 kB.
+
+  Both failures are silent by construction, which is what made this worth
+  chasing past the first green build: a map whose worker is gone stops
+  requesting tiles rather than reporting anything, so the page looks like a
+  styling bug. The fix is confirmed the only way it can be — in a browser, on
+  the built output, by the tile requests appearing at all.
+
+- **Every row in the node table was misaligned from its header below 80rem.**
+  The responsive rules hide columns by `nth-child`, so they carry hard-coded
+  positions into the column list, and splitting the validator column into Type
+  and Address in `0.4.0` shifted every position after the third. The rules kept
+  hiding the old ones.
+
+  On a phone that meant the three columns worth keeping — name, best block,
+  last block — were not the three that survived: it showed `Name`, `Txs`,
+  `Finalized` and `Location` instead. Four cells, against a grid still
+  declaring three columns, so the fourth wrapped onto a second line and every
+  row drifted out of step with the header above it. The middle tier had the
+  same fault, seven cells in six columns.
+
+  The positions now match the columns they are named for, and a test reads the
+  stylesheet and the column list together and fails when they disagree — the
+  drift is the kind that survives review precisely because the CSS looks right
+  in isolation.
+
+  The tier boundary moved from 64rem down to 48rem while the rules were open:
+  the seven-column layout fits comfortably at 768px, and a landscape tablet was
+  being given the three-column phone layout for no reason. Column widths were
+  retuned so nothing overflows at either end of that range, and so `Type` shows
+  `validator` rather than `valida…`. The desktop layout still scrolls
+  horizontally, which is the honest answer for thirteen columns.
+
 ## [0.4.1] - 2026-08-20
 
 ### Fixed
@@ -496,7 +551,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/orbinum/telemetry/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/orbinum/telemetry/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/orbinum/telemetry/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/orbinum/telemetry/compare/v0.3.0...v0.3.1
