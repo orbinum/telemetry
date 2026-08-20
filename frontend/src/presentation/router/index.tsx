@@ -20,10 +20,15 @@ export const router = createBrowserRouter([
           { path: "/", element: <NodeListPage /> },
           { path: "/chain/:genesisHash", element: <NodeListPage /> },
           { path: "/chain/:genesisHash/stats", element: <StatsPage /> },
+          {
+            path: "/chain/:genesisHash/map",
+            lazy: async () => {
+              const { MapPage } = await import("../pages/MapPage");
+              return { Component: MapPage };
+            },
+          },
         ],
       },
-      // Anything else — an old bookmark, a removed page — lands on the node
-      // list rather than react-router's raw error screen.
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

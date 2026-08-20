@@ -203,4 +203,118 @@
     -webkit-appearance: none;
     appearance: none;
   }
+
+  /* ── Node map ────────────────────────────────────────────────────────────── */
+  /* MapLibre renders into a canvas that fills its container, so the height has
+     to be a real length — a percentage would resolve against nothing. Taller
+     on wide screens, where the extra rows cost nothing and the map is the
+     page. */
+  .node-map {
+    height: 22rem;
+    border: 1px solid var(--border);
+  }
+
+  @media (width >= 64rem) {
+    .node-map {
+      height: 32rem;
+    }
+  }
+
+  /* MapLibre's own chrome, themed to match the app rather than its default
+     white-on-white. */
+  .node-map .maplibregl-ctrl-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: none;
+  }
+
+  .node-map .maplibregl-ctrl-group button + button {
+    border-top-color: var(--border);
+  }
+
+  .node-map .maplibregl-ctrl-group button:hover {
+    background: var(--overlay-hover);
+  }
+
+  /* The zoom glyphs are black SVGs baked into the library's stylesheet, so on
+     a dark button they vanish. Inverting is the only way to recolour them
+     without shipping replacements. Light mode already matches, hence the
+     three-way guard the theme switch needs. */
+  :root:not([data-theme="light"]) .node-map .maplibregl-ctrl-icon {
+    filter: invert(1);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) .node-map .maplibregl-ctrl-icon {
+      filter: none;
+    }
+  }
+
+  [data-theme="dark"] .node-map .maplibregl-ctrl-icon {
+    filter: invert(1);
+  }
+
+  /* Attribution must stay legible — it is a licence requirement, not chrome
+     to hide — but it should not be a white slab on a dark map. */
+  .node-map .maplibregl-ctrl-attrib.maplibregl-compact {
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    color: var(--muted);
+  }
+
+  .node-map .maplibregl-ctrl-attrib a {
+    color: var(--muted);
+  }
+
+  :root:not([data-theme="light"]) .node-map .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) .node-map .maplibregl-ctrl-attrib-button {
+      filter: none;
+    }
+  }
+
+  [data-theme="dark"] .node-map .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
+  }
+}
+
+/* ── Map popup ─────────────────────────────────────────────────────────────── */
+/* Deliberately outside `@layer components`: maplibre-gl.css is unlayered, and
+   an unlayered rule beats any layered one no matter how specific, so a layered
+   version of this loses and the popup renders white-on-white. */
+.node-popup .maplibregl-popup-content {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 35%);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  padding: 0.5rem 0.75rem;
+  white-space: normal;
+}
+
+/* The tip is a CSS border triangle, so the surface colour goes on whichever
+   side faces the popup body — one rule per anchor. */
+.node-popup .maplibregl-popup-tip {
+  border-width: 6px;
+}
+
+.node-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--surface);
+}
+
+.node-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--surface);
+}
+
+.node-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--surface);
+}
+
+.node-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--surface);
 }

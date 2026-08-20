@@ -129,7 +129,20 @@ export async function readHistory(
   return results.map(toPoint);
 }
 
-/** The same series from the hourly rollup, for windows wider than a few days. */
+/**
+ * The same series for a wide window, at hourly resolution.
+ *
+ * Reads *both* tables rather than only the rollup. The rollup lags the raw
+ * buckets by the whole retention window — an hour is only rolled up once it
+ * falls out of `chain_history` — so a chain younger than that retention has an
+ * empty `chain_history_hourly` and a rollup-only query answers "30 days" with
+ * nothing at all, which reads as "this chain has no history" rather than "this
+ * chain is three days old".
+ *
+ * The raw half is folded to the same hour buckets so both halves plot as one
+ * series, and the union prefers the rollup where an hour exists in both, which
+ * can happen briefly while a prune is in flight.
+ */
 export async function readHourlyHistory(
   db: D1Database,
   genesisHash: string,
@@ -137,12 +150,36 @@ export async function readHourlyHistory(
 ): Promise<ChainHistoryPoint[]> {
   const { results } = await db
     .prepare(
-      `SELECT bucket, node_count_max AS node_count,
-              CAST(authority_count_avg AS INTEGER) AS authority_count,
-              stale_count_max AS stale_count, best_height, finalized_height,
-              finality_lag_max AS finality_lag, avg_block_time_ms, versions
-       FROM chain_history_hourly
-       WHERE genesis = ?1 AND bucket >= ?2
+      `WITH rolled AS (
+         SELECT bucket, node_count_max AS node_count,
+                CAST(authority_count_avg AS INTEGER) AS authority_count,
+                stale_count_max AS stale_count, best_height, finalized_height,
+                finality_lag_max AS finality_lag, avg_block_time_ms, versions
+         FROM chain_history_hourly
+         WHERE genesis = ?1 AND bucket >= ?2
+       ),
+       raw AS (
+         -- Aggregated exactly as pruneHistory would, so a point does not shift
+         -- the day its hour is finally rolled up.
+         SELECT bucket / 3600000 * 3600000 AS bucket,
+                MAX(node_count) AS node_count,
+                CAST(AVG(authority_count) AS INTEGER) AS authority_count,
+                MAX(stale_count) AS stale_count,
+                MAX(best_height) AS best_height,
+                MAX(finalized_height) AS finalized_height,
+                MAX(finality_lag) AS finality_lag,
+                AVG(avg_block_time_ms) AS avg_block_time_ms,
+                (SELECT versions FROM chain_history newest
+                  WHERE newest.genesis = outer_h.genesis
+                    AND newest.bucket / 3600000 = outer_h.bucket / 3600000
+                  ORDER BY newest.bucket DESC LIMIT 1) AS versions
+         FROM chain_history outer_h
+         WHERE genesis = ?1 AND bucket >= ?2
+         GROUP BY bucket / 3600000
+       )
+       SELECT * FROM rolled
+       UNION ALL
+       SELECT * FROM raw WHERE bucket NOT IN (SELECT bucket FROM rolled)
        ORDER BY bucket`,
     )
     .bind(genesisHash, from)

@@ -65,6 +65,9 @@ export async function history(c: Context<{ Bindings: CloudflareBindings }>): Pro
       genesisHash,
       window: requested,
       resolution: hourly ? "1h" : "1m",
+      from,
+      covers:
+        points.length === 0 ? undefined : { from: points[0].bucket, to: points.at(-1)?.bucket },
       points,
     });
   } catch (error) {

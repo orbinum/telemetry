@@ -12,6 +12,15 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-20
+
+**The dashboard shows what it already knew.** Three things the service had been
+collecting since early releases — a node's coordinates, its role, and the
+chain's own past — reached the screen for the first time. None of them needed
+new data: the coordinates had ridden the feed since day one with no frontend
+reading them, the role was on the wire and rendered ambiguously, and the
+history had been accumulating in D1 behind an endpoint nobody called.
+
 ### Changed
 
 - **The validator column was two columns wearing one hat.** It rendered the
@@ -32,6 +41,27 @@ a whole: the worker and the UI compile the same wire contract from
   reports.
 
 ### Added
+
+- **A map of where the nodes are.** The Location column and its histogram both
+  answer "which countries", and neither can show what an operator actually
+  wants to know: how concentrated the network is. A new Map tab plots one
+  marker per location, its area scaled to the node count, so eight nodes in one
+  datacenter read differently from eight cities running one each — and the
+  gaps, whole continents with nothing on them, read at a glance.
+
+  The coordinates were already arriving. Cloudflare attaches them to every
+  upgrade request and they have ridden the feed since the first release; no
+  frontend code had ever read them, so this needed no backend change at all.
+  Markers are coloured by role and carry the count where it fits; hovering one
+  names the place. Nodes whose coordinates Cloudflare omitted are excluded
+  rather than parked at (0, 0) — which is in the Atlantic, and would read as a
+  real cluster — and the panel says how many were left out.
+
+  MapLibre over CARTO's basemap, loaded lazily: the main bundle is unchanged,
+  and the map's weight is paid only by whoever opens the tab. This is the one
+  view that talks to a third party, so the tile host sees the IP of anyone who
+  opens it — nothing about a node is sent, but the request happens. Swapping in
+  a self-hosted basemap later is a one-line change.
 
 - **The validator address survives losing the memory that held it.** It arrives
   in exactly one message, `afg.authority_set`, sent milliseconds after a node
@@ -54,6 +84,40 @@ a whole: the worker and the UI compile the same wire contract from
   one, it keeps showing.
 
 ### Fixed
+
+- **Wide history windows answered with nothing for any chain younger than a
+  month.** `GET /history?window=7d` and `30d` read the hourly rollup, and an
+  hour only reaches that table once it falls out of the raw 60s buckets — 30
+  days later. So a chain three days old returned zero points, which reads as
+  "this chain has no history" rather than "this chain is three days old". Not
+  an edge case: it is the normal state for the whole first month of any chain's
+  life, mainnet included at launch, and exactly when the history is most looked
+  at.
+
+  Both windows now read the rollup *and* the raw buckets, folding the raw half
+  into the same hour groups the rollup uses so a point does not shift the day
+  its hour is finally rolled up. Against production's three days of data the
+  two windows went from 0 points to 74. The response also gained a `covers`
+  field naming the range actually returned, so a chart can label its axis with
+  what exists instead of implying a month that was never recorded.
+
+- **MapLibre rendered nothing under `vite dev`, silently.** It decodes vector
+  tiles in a Web Worker loaded from its own bundle; Vite's dependency
+  pre-bundling rewrote that path, the worker 404'd, and a map that cannot
+  decode tiles never requests any — so the basemap was blank with no error
+  anywhere, because the failure happened inside a worker nobody was listening
+  to. `optimizeDeps.exclude` fixes it. Production builds were never affected,
+  which is what made it look like a rendering bug rather than a dev-server one.
+
+- **`sysinfo.hwbench` is unreachable, and now it is written down.** The parser
+  and the domain state for hardware benchmark scores have been complete since
+  Phase 2, and nothing has ever sent one: the node binary rejects
+  `--enable-hardware-benchmarks` outright and never emits the message, because
+  nothing in its code wires up `sc-sysinfo`. That is a change in the node repo,
+  not here and not in `node-deploy` — adding the flag to a compose file would
+  stop validators from starting, since the binary rejects the argument. The
+  parser stays as it is: it costs nothing and is ready for the day a node
+  sends one.
 
 - **Validator addresses were missing in production, and the code was not at
   fault.** `afg.authority_set` is only emitted at telemetry verbosity 1 and

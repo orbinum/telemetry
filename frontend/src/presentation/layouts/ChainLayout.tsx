@@ -59,6 +59,7 @@ export function ChainLayout() {
             Nodes
           </TabLink>
           <TabLink to={`/chain/${selected}/stats`}>Stats</TabLink>
+          <TabLink to={`/chain/${selected}/map`}>Map</TabLink>
         </div>
       )}
 
