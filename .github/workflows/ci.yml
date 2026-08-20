@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
   workflow_call:
 
 # `github.workflow` is the *calling* workflow's name — "CI" on a direct push,
@@ -118,24 +118,6 @@ jobs:
       # compile from source (there is no separate shared build step).
       - name: Build
         run: pnpm build
-
-  protect-main:
-    name: Require PR source to be develop
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    steps:
-      # The branch name goes through the environment, never into the script
-      # body: interpolating it inline lets a branch named `$(...)` run commands
-      # on the runner, and anyone opening a PR chooses that name.
-      - name: Check head branch
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          if [ "$HEAD_REF" != "develop" ]; then
-            echo "❌ PRs to main must come from 'develop', not '$HEAD_REF'."
-            exit 1
-          fi
-          echo "✅ PR source is 'develop'."
 
   all-checks:
     name: All Checks Passed
