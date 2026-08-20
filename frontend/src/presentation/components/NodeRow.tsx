@@ -9,6 +9,7 @@
 import { memo } from "react";
 import { CopyButton } from "./ui/CopyButton";
 import { useNode } from "../../stores/feedStore";
+import type { NodeType } from "../../../../shared/protocol/feed";
 import {
   NO_VALUE,
   formatAgo,
@@ -18,6 +19,11 @@ import {
   formatNumber,
   shortHash,
 } from "../../utils/format";
+
+const TYPE_TITLES: Record<NodeType, string> = {
+  validator: "Runs with --validator (reported by the node itself)",
+  rpc: "Not an authority",
+};
 
 interface NodeRowProps {
   id: number;
@@ -50,6 +56,9 @@ export const NodeRow = memo(function NodeRow({ id, now }: NodeRowProps) {
         {node.implementation} <span className="opacity-60">{node.version}</span>
       </div>
       <div className="text-muted">
+        <span title={TYPE_TITLES[node.nodeType]}>{node.nodeType}</span>
+      </div>
+      <div className="text-muted">
         {node.validator ? (
           <span className="group flex items-center gap-1.5">
             <span title={node.validator}>{shortHash(node.validator)}</span>
@@ -60,10 +69,10 @@ export const NodeRow = memo(function NodeRow({ id, now }: NodeRowProps) {
               className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
             />
           </span>
-        ) : node.authority === true ? (
-          <span title="Authority — address requires telemetry verbosity 1 or higher">
-            validator
-          </span>
+        ) : node.nodeType === "validator" ? (
+          /* An authority with no address means the node reports at verbosity
+             0, where afg.authority_set is never sent — not that it has none. */
+          <span title="Requires telemetry verbosity 1 or higher">{NO_VALUE}</span>
         ) : (
           NO_VALUE
         )}

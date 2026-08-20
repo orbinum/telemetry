@@ -18,7 +18,16 @@ export interface Column {
 export const COLUMNS: Column[] = [
   { key: "name", label: "Name" },
   { key: "implementation", label: "Implementation" },
-  { key: "validator", label: "Validator" },
+  {
+    key: "nodeType",
+    label: "Type",
+    title: "Validator when the node runs with --validator; RPC otherwise",
+  },
+  {
+    key: "validator",
+    label: "Address",
+    title: "Validator address — requires telemetry verbosity 1 or higher",
+  },
   { key: "peers", label: "Peers", numeric: true },
   { key: "txcount", label: "Txs", numeric: true, title: "Transactions in the pool" },
   { key: "best", label: "Best", numeric: true, title: "Best block height" },

@@ -5,6 +5,7 @@
  */
 
 import type { FeedChain, FeedNode } from "../../../shared/protocol/feed";
+import { nodeTypeOf } from "../domain/node-type";
 import type { ChainState } from "../domain/chain-state";
 import type { NodeState } from "../domain/node-state";
 
@@ -16,6 +17,7 @@ export function toFeedNode(id: number, node: NodeState): FeedNode {
     implementation: node.details.implementation,
     version: node.details.version,
     authority: node.details.authority,
+    nodeType: nodeTypeOf(node.details),
     validator: node.validator,
     networkId: node.details.networkId,
     startupTime: Number.isFinite(startup) ? startup : undefined,

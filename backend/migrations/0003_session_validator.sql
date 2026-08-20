@@ -1,0 +1,20 @@
+-- The validator address, per session.
+--
+-- It arrives in `afg.authority_set`, which clients emit once at startup and
+-- only at telemetry verbosity ≥ 1 — never again for the life of the
+-- connection. Everything downstream of that single message is therefore
+-- fragile: a ChainDO eviction wipes the in-memory node and the address comes
+-- back empty, since the gateway can only replay the cached system.connected.
+--
+-- Persisting it here makes the address survive an eviction, a gateway
+-- redeploy, and the node's own restart: the last known address for a
+-- network_id can be read back and seeded on connect, long before (or without)
+-- the node ever sending afg again.
+--
+-- Per session rather than in a node dimension table, for the same reason as
+-- `version` and `name`: a node that changes its validator account changes it
+-- between sessions, and collapsing that would erase when it happened.
+--
+-- NULL means "never told us", not "has none" — which is what every validator
+-- looks like at verbosity 0.
+ALTER TABLE node_sessions ADD COLUMN validator TEXT;

@@ -21,7 +21,7 @@ export function NodeSearch() {
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Filter by name or validator…"
+        placeholder="Filter by name, type or address…"
         aria-label="Filter nodes by name or validator"
         className="search-input h-9 w-full rounded-md border border-border bg-surface pl-9 pr-9 font-sans text-sm text-text transition-colors placeholder:text-muted hover:border-muted focus:border-accent focus:outline-none"
       />

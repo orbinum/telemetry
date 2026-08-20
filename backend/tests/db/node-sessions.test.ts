@@ -8,7 +8,12 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { closeSessions, openSession } from "../../src/db/node-sessions";
+import {
+  closeSessions,
+  openSession,
+  readLastValidatorAddress,
+  recordValidatorAddress,
+} from "../../src/db/node-sessions";
 import { NodeState } from "../../src/domain/node-state";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
 import { peerId } from "../fixtures/peer-id";
@@ -20,7 +25,7 @@ interface Recorded {
   params: unknown[];
 }
 
-function fakeDb() {
+function fakeDb(firstRow: unknown = null) {
   const calls: Recorded[] = [];
   const batches: Recorded[][] = [];
 
@@ -34,6 +39,10 @@ function fakeDb() {
       run: () => {
         calls.push(record);
         return Promise.resolve({ success: true });
+      },
+      first: () => {
+        calls.push(record);
+        return Promise.resolve(firstRow);
       },
       __record: record,
     };
@@ -139,5 +148,47 @@ describe("closeSessions", () => {
 
     expect(batches).toHaveLength(0);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("validator address", () => {
+  it("updates the open session rather than opening another", async () => {
+    const { db, calls } = fakeDb();
+    await recordValidatorAddress(db, GENESIS, peerId("validator-1"), 1000, "5FA9nQ");
+
+    expect(calls[0].sql).toContain("UPDATE node_sessions SET validator");
+    expect(calls[0].params).toEqual(["5FA9nQ", peerId("validator-1"), GENESIS, 1000]);
+  });
+
+  it("carries the address into a new session, so a reconnect keeps it", async () => {
+    // Seeded from the previous session's address before afg has a chance to
+    // arrive — and on a verbosity-0 network, it never will.
+    const { db, calls } = fakeDb();
+    const n = node("validator-1");
+    n.setValidatorAddress("5FA9nQ");
+    await openSession(db, GENESIS, n);
+
+    expect(calls[0].params[9]).toBe("5FA9nQ");
+  });
+
+  it("writes NULL when the node never reported one", async () => {
+    const { db, calls } = fakeDb();
+    await openSession(db, GENESIS, node("rpc-1"));
+
+    expect(calls[0].params[9]).toBeNull();
+  });
+
+  it("reads back the newest address, skipping sessions that had none", async () => {
+    const { db, calls } = fakeDb({ validator: "5FA9nQ" });
+    const address = await readLastValidatorAddress(db, GENESIS, peerId("validator-1"));
+
+    expect(address).toBe("5FA9nQ");
+    expect(calls[0].sql).toContain("validator IS NOT NULL");
+    expect(calls[0].sql).toContain("ORDER BY connected_at DESC");
+  });
+
+  it("returns undefined when no session ever carried an address", async () => {
+    const { db } = fakeDb(null);
+    expect(await readLastValidatorAddress(db, GENESIS, peerId("rpc-1"))).toBeUndefined();
   });
 });
