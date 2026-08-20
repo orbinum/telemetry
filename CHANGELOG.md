@@ -12,6 +12,15 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-20
+
+**The dashboard shows what it already knew.** Three things the service had been
+collecting since early releases — a node's coordinates, its role, and the
+chain's own past — reached the screen for the first time. None of them needed
+new data: the coordinates had ridden the feed since day one with no frontend
+reading them, the role was on the wire and rendered ambiguously, and the
+history had been accumulating in D1 behind an endpoint nobody called.
+
 ### Changed
 
 - **The validator column was two columns wearing one hat.** It rendered the
@@ -99,6 +108,15 @@ a whole: the worker and the UI compile the same wire contract from
   anywhere, because the failure happened inside a worker nobody was listening
   to. `optimizeDeps.exclude` fixes it. Production builds were never affected,
   which is what made it look like a rendering bug rather than a dev-server one.
+
+- **`sysinfo.hwbench` is unreachable, and now it is written down.** The parser
+  and the domain state for hardware benchmark scores have been complete since
+  Phase 2, and nothing has ever sent one: the node binary rejects
+  `--enable-hardware-benchmarks` outright and never emits the message, because
+  nothing in its code wires up `sc-sysinfo`. That is a change in the node repo,
+  not here and not in `node-deploy` — adding the flag to a compose file would
+  stop validators from starting. `HWBENCH_PLAN.md` records the evidence, the
+  wiring the node needs, and the order the four steps have to happen in.
 
 - **Validator addresses were missing in production, and the code was not at
   fault.** `afg.authority_set` is only emitted at telemetry verbosity 1 and
