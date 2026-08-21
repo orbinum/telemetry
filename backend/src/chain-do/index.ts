@@ -39,6 +39,13 @@ import type { NodeMessage, SystemConnectedMessage } from "../protocol/node";
 /** Reaper cadence: sweep expired nodes once a minute while any are alive. */
 const REAPER_INTERVAL_MS = 60_000;
 
+/**
+ * Keepalive for browser feeds: lets a client notice a socket dropped without a
+ * FIN, which never fires `close` and leaves the page reporting stale data as
+ * live. Answered by the runtime, so a hibernating DO stays hibernating.
+ */
+const KEEPALIVE = new WebSocketRequestResponsePair("ping", "pong");
+
 export class ChainDO extends DurableObject<CloudflareBindings> {
   private chain?: ChainState;
   private readonly hub = new FeedHub();
@@ -47,6 +54,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
   constructor(ctx: DurableObjectState, env: CloudflareBindings) {
     super(ctx, env);
     this.feed = new FeedBroadcaster(this.hub, () => this.ctx.getWebSockets());
+    this.ctx.setWebSocketAutoResponse(KEEPALIVE);
   }
 
   // ─── Ingest RPC (called by GatewayDO) ──────────────────────────────────────
@@ -74,13 +82,16 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
   async nodeMessage(nodeKey: string, msg: NodeMessage): Promise<boolean> {
     if (this.chain === undefined || !this.chain.hasNode(nodeKey)) return false;
     const id = this.chain.applyMessage(nodeKey, msg, Date.now());
+    // Runs even when the sender resolved to no id: a block can flip *other*
+    // nodes to stale.
+    this.markWentStale();
     if (id !== undefined) {
       this.hub.markUpdated(id);
-      this.feed.schedule(this.chain);
       if (msg.msg === "afg.authority_set") {
         this.recordValidator(this.chain.getById(id), msg.authorityId);
       }
     }
+    this.feed.schedule(this.chain);
     return true;
   }
 
@@ -99,6 +110,10 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     const now = Date.now();
     const reaped = this.chain.takeExpired(now, NODE_TIMEOUT_MS);
     this.hub.markRemoved(reaped.map((entry) => entry.id));
+    // After the reap, so departed nodes are not swept. The only sweep a chain
+    // that stopped producing blocks ever gets.
+    this.chain.sweepStale(now);
+    this.markWentStale();
     this.feed.schedule(this.chain);
 
     this.recordSessionEnd(reaped, now);
@@ -188,6 +203,17 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     );
   }
 
+  /**
+   * Ship the stale flags the sweep just flipped. Removed ids are skipped:
+   * marking one updated would resurrect it in the batch the hub is assembling.
+   */
+  private markWentStale(): void {
+    if (this.chain === undefined) return;
+    for (const id of this.chain.drainWentStale()) {
+      if (this.chain.getById(id) !== undefined) this.hub.markUpdated(id);
+    }
+  }
+
   /** Open a session for a node that just announced itself. Best-effort. */
   private recordSessionStart(node: NodeState | undefined): void {
     const db = this.env.DB;
@@ -242,11 +268,12 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     // Hibernatable accept: feed sockets survive eviction without billing for
     // idle time, and the socket list lives in ctx.getWebSockets().
     this.ctx.acceptWebSocket(server);
-    this.feed.sendSnapshot(server, this.chain);
+    this.feed.sendSnapshot(server, this.chain, Date.now());
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  // Feed sockets are one-way; anything a browser sends is ignored.
+  // Feed sockets carry no browser→server data: "ping" is auto-answered by the
+  // runtime before reaching here, and anything else is ignored.
   override async webSocketMessage(): Promise<void> {}
   override async webSocketClose(): Promise<void> {}
   override async webSocketError(): Promise<void> {}

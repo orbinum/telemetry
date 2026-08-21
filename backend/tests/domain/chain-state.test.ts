@@ -137,6 +137,37 @@ describe("stale sweep", () => {
     expect(nodeOf(chain, "live").stale).toBe(false);
     expect(chain.best?.height).toBe(11);
   });
+
+  it("reports the ids that just went stale, once each", () => {
+    const chain = chainWith("live", "quiet");
+    importBlock(chain, "quiet", 10, 1000);
+    importBlock(chain, "live", 10, 1100);
+    // Nothing is stale yet, so nothing is pending.
+    expect(chain.drainWentStale()).toEqual([]);
+
+    const later = 1000 + STALE_TIMEOUT_MS + 1000;
+    importBlock(chain, "live", 11, later);
+
+    const quietId = chain.list().find((entry) => entry.key === "quiet")?.id;
+    expect(chain.drainWentStale()).toEqual([quietId]);
+
+    // Draining clears: the already-stale must not be re-broadcast each sweep.
+    importBlock(chain, "live", 12, later + 1000);
+    expect(chain.drainWentStale()).toEqual([]);
+  });
+
+  it("sweeps without a block, for a chain that stopped producing them", () => {
+    const chain = chainWith("a", "b");
+    importBlock(chain, "a", 10, 1000);
+    importBlock(chain, "b", 10, 1100);
+
+    // No block arrives ever again — only the reaper's sweep runs.
+    chain.sweepStale(1000 + STALE_TIMEOUT_MS + 1000);
+
+    expect(nodeOf(chain, "a").stale).toBe(true);
+    expect(nodeOf(chain, "b").stale).toBe(true);
+    expect(chain.drainWentStale()).toHaveLength(2);
+  });
 });
 
 describe("lifecycle", () => {

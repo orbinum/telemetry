@@ -6,6 +6,7 @@
  * owns everything about *what* browsers receive and *when*.
  */
 
+import { FEED_VERSION } from "../../../shared/protocol/feed";
 import { toFeedChain, toFeedNode } from "../feed/serialize";
 import type { FeedMessage } from "../../../shared/protocol/feed";
 import type { ChainState } from "../domain/chain-state";
@@ -39,10 +40,12 @@ export class FeedBroadcaster {
    * A chain that does not exist yet still gets a done-init, so the UI can
    * tell "connected and empty" from "still loading".
    */
-  sendSnapshot(socket: WebSocket, chain: ChainState | undefined): void {
+  sendSnapshot(socket: WebSocket, chain: ChainState | undefined, now: number): void {
     if (chain === undefined) {
       this.send(socket, {
         t: "init",
+        v: FEED_VERSION,
+        serverTime: now,
         chain: { genesisHash: "", label: "", nodeCount: 0 },
         nodes: [],
         done: true,
@@ -57,6 +60,8 @@ export class FeedBroadcaster {
     for (let i = 0; i < chunks; i++) {
       this.send(socket, {
         t: "init",
+        v: FEED_VERSION,
+        serverTime: now,
         chain: chainFrame,
         nodes: nodes.slice(i * INIT_CHUNK_SIZE, (i + 1) * INIT_CHUNK_SIZE),
         done: i === chunks - 1,

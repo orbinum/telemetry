@@ -7,20 +7,35 @@
  * ever.
  */
 
-import { parseFeedMessage } from "../../../shared/protocol/feed";
+import { FEED_VERSION, parseFeedMessage } from "../../../shared/protocol/feed";
 import type { FeedChain, FeedNode } from "../../../shared/protocol/feed";
 
-export type FeedStatus = "connecting" | "live" | "reconnecting";
+/** `outdated` is terminal — only fresh code recovers; the rest self-heal. */
+export type FeedStatus = "connecting" | "live" | "reconnecting" | "outdated";
 
 export interface FeedSnapshot {
   nodes: Map<number, FeedNode>;
   chain?: FeedChain;
   status: FeedStatus;
+  /** Add to `Date.now()` for the server's clock; 0 until the first init. */
+  clockOffset: number;
 }
 
 type Listener = (snapshot: FeedSnapshot) => void;
 
 const RECONNECT_DELAY_MS = 2000;
+
+/**
+ * Detects a half-open socket — dropped without a FIN, so `close` never fires
+ * and the UI keeps reporting "live" over frozen data. Two intervals of silence
+ * rather than one, so a single delayed frame does not tear down a live
+ * connection.
+ */
+const PING_INTERVAL_MS = 30_000;
+const PONG_TIMEOUT_MS = PING_INTERVAL_MS * 2;
+
+/** `WebSocket.OPEN`, spelled out so the check does not depend on the global. */
+const SOCKET_OPEN = 1;
 
 export class FeedClient {
   private socket?: WebSocket;
@@ -34,6 +49,10 @@ export class FeedClient {
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private closed = false;
   private listeners = new Set<Listener>();
+  private clockOffset = 0;
+  private pingTimer?: ReturnType<typeof setInterval>;
+  /** When the last frame of any kind arrived; 0 before the socket opens. */
+  private lastSeen = 0;
 
   private readonly genesisHash: string;
   /** ws:// or wss:// base of the worker serving this chain. */
@@ -56,6 +75,7 @@ export class FeedClient {
 
   disconnect(): void {
     this.closed = true;
+    this.stopKeepalive();
     clearTimeout(this.reconnectTimer);
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     this.frame = undefined;
@@ -69,13 +89,58 @@ export class FeedClient {
     const socket = new WebSocket(`${this.wsBase}/feed/${this.genesisHash}`);
     this.socket = socket;
 
-    socket.onopen = () => this.setStatus("live");
+    socket.onopen = () => {
+      this.setStatus("live");
+      this.startKeepalive();
+    };
     socket.onmessage = (event) => {
       if (typeof event.data !== "string") return;
+      // Any frame proves liveness, not just a pong: a busy chain may never
+      // leave a gap long enough to notice.
+      this.lastSeen = Date.now();
+      if (event.data === "pong") return;
       this.apply(event.data);
     };
-    socket.onclose = () => this.scheduleReconnect();
+    socket.onclose = () => {
+      this.stopKeepalive();
+      this.scheduleReconnect();
+    };
     socket.onerror = () => socket.close();
+  }
+
+  // ─── Keepalive ─────────────────────────────────────────────────────────────
+
+  private startKeepalive(): void {
+    this.stopKeepalive();
+    this.lastSeen = Date.now();
+    this.pingTimer = setInterval(() => {
+      if (this.socket?.readyState !== SOCKET_OPEN) return;
+      // Before pinging, so the gap measured always covers a full interval.
+      if (Date.now() - this.lastSeen > PONG_TIMEOUT_MS) {
+        // By hand: a half-open socket never closes itself, and `onclose` is
+        // what drives the reconnect.
+        this.stopKeepalive();
+        this.setStatus("reconnecting");
+        this.socket.close();
+        return;
+      }
+      this.socket.send("ping");
+    }, PING_INTERVAL_MS);
+  }
+
+  private stopKeepalive(): void {
+    clearInterval(this.pingTimer);
+    this.pingTimer = undefined;
+  }
+
+  /** Give up for good: reconnecting would loop against an unreadable server. */
+  private markOutdated(): void {
+    this.closed = true;
+    this.stopKeepalive();
+    clearTimeout(this.reconnectTimer);
+    this.setStatus("outdated");
+    this.socket?.close();
+    this.socket = undefined;
   }
 
   private scheduleReconnect(): void {
@@ -102,6 +167,14 @@ export class FeedClient {
 
     switch (msg.t) {
       case "init":
+        // Before anything is applied: these nodes may be shaped in a way this
+        // build misreads.
+        if (msg.v !== FEED_VERSION) {
+          this.markOutdated();
+          return;
+        }
+        // Per init, so a reconnect re-syncs a clock that drifted during sleep.
+        this.clockOffset = msg.serverTime - Date.now();
         // A fresh init after a reconnect replaces the world: the first chunk
         // clears, later chunks accumulate.
         if (this.isFirstInitChunk) this.nodes.clear();
@@ -144,6 +217,7 @@ export class FeedClient {
       nodes: new Map(this.nodes),
       chain: this.chain,
       status: this.status,
+      clockOffset: this.clockOffset,
     };
     for (const listener of this.listeners) listener(snapshot);
   }

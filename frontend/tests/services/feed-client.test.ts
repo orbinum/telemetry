@@ -4,8 +4,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FEED_VERSION } from "../../../shared/protocol/feed";
 import { FeedClient } from "../../src/services/feed-client";
-import type { FeedMessage, FeedNode } from "../../../shared/protocol/feed";
+import type { FeedChain, FeedMessage, FeedNode } from "../../../shared/protocol/feed";
 
 class FakeSocket {
   static last: FakeSocket | undefined;
@@ -18,12 +19,37 @@ class FakeSocket {
   constructor(readonly url: string) {
     FakeSocket.last = this;
   }
+  readyState = 1;
+  sent: string[] = [];
   close(): void {
     this.closed = true;
+    this.readyState = 3;
+    this.onclose?.();
+  }
+  send(data: string): void {
+    this.sent.push(data);
   }
   emit(msg: FeedMessage): void {
     this.onmessage?.({ data: JSON.stringify(msg) });
   }
+}
+
+/** A well-formed init frame; individual tests override what they care about. */
+function init(
+  chain: FeedChain,
+  nodes: FeedNode[],
+  done: boolean,
+  overrides: Partial<FeedMessage & { v: number; serverTime: number }> = {},
+): FeedMessage {
+  return {
+    t: "init",
+    v: FEED_VERSION,
+    serverTime: Date.now(),
+    chain,
+    nodes,
+    done,
+    ...overrides,
+  } as FeedMessage;
 }
 
 /** Manually driven requestAnimationFrame so flushes are deterministic. */
@@ -94,12 +120,9 @@ describe("FeedClient", () => {
     const socket = FakeSocket.last!;
     socket.onopen?.();
 
-    socket.emit({
-      t: "init",
-      chain: { genesisHash: "0xabc", label: "Test", nodeCount: 2 },
-      nodes: [node(1, 10), node(2, 11)],
-      done: true,
-    });
+    socket.emit(
+      init({ genesisHash: "0xabc", label: "Test", nodeCount: 2 }, [node(1, 10), node(2, 11)], true),
+    );
     runFrame();
     expect([...last.keys()].sort()).toEqual([1, 2]);
 
@@ -122,13 +145,13 @@ describe("FeedClient", () => {
     socket.onopen?.();
 
     const chain = { genesisHash: "0xabc", label: "Test", nodeCount: 3 };
-    socket.emit({ t: "init", chain, nodes: [node(1, 1), node(2, 2)], done: false });
-    socket.emit({ t: "init", chain, nodes: [node(3, 3)], done: true });
+    socket.emit(init(chain, [node(1, 1), node(2, 2)], false));
+    socket.emit(init(chain, [node(3, 3)], true));
     runFrame();
     expect(last.size).toBe(3);
 
     // A reconnect's init replaces the world instead of merging into it.
-    socket.emit({ t: "init", chain, nodes: [node(9, 9)], done: true });
+    socket.emit(init(chain, [node(9, 9)], true));
     runFrame();
     expect([...last.keys()]).toEqual([9]);
   });
@@ -159,5 +182,113 @@ describe("FeedClient", () => {
     socket.emit({ t: "upd", n: [node(1, 1)] });
     runFrame();
     expect(calls).toBe(before);
+  });
+
+  it("rejects a feed whose version this build does not understand", () => {
+    const client = new FeedClient("0xabc", "ws://test.local");
+    const statuses: string[] = [];
+    let last: Map<number, FeedNode> = new Map();
+    client.subscribe((s) => {
+      statuses.push(s.status);
+      last = s.nodes;
+    });
+    client.connect();
+    const socket = FakeSocket.last!;
+    socket.onopen?.();
+
+    socket.emit(
+      init({ genesisHash: "0xabc", label: "Test", nodeCount: 1 }, [node(1, 1)], true, {
+        v: FEED_VERSION + 1,
+      }),
+    );
+    runFrame();
+
+    // Not applied: these nodes may be shaped in a way this build misreads.
+    expect(last.size).toBe(0);
+    expect(statuses.at(-1)).toBe("outdated");
+    expect(socket.closed).toBe(true);
+  });
+
+  it("does not reconnect once outdated", () => {
+    vi.useFakeTimers();
+    const client = new FeedClient("0xabc", "ws://test.local");
+    client.connect();
+    const socket = FakeSocket.last!;
+    socket.onopen?.();
+    socket.emit(
+      init({ genesisHash: "0xabc", label: "Test", nodeCount: 0 }, [], true, {
+        v: FEED_VERSION + 1,
+      }),
+    );
+
+    // Well past the reconnect delay: a mismatched build would loop forever.
+    vi.advanceTimersByTime(60_000);
+    expect(FakeSocket.last).toBe(socket);
+    vi.useRealTimers();
+  });
+
+  it("measures the server clock offset from the init frame", () => {
+    // Only the clock is faked; requestAnimationFrame stays the manual stub
+    // this file drives, so `runFrame` still publishes.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const client = new FeedClient("0xabc", "ws://test.local");
+    let offset = Number.NaN;
+    client.subscribe((s) => (offset = s.clockOffset));
+    client.connect();
+    const socket = FakeSocket.last!;
+    socket.onopen?.();
+
+    // Server clock runs 30s ahead of this browser's.
+    socket.emit(
+      init({ genesisHash: "0xabc", label: "Test", nodeCount: 0 }, [], true, {
+        serverTime: Date.now() + 30_000,
+      }),
+    );
+    runFrame();
+
+    expect(offset).toBe(30_000);
+    vi.useRealTimers();
+  });
+
+  it("pings on an interval and tears down a socket that stops answering", () => {
+    vi.useFakeTimers();
+    const client = new FeedClient("0xabc", "ws://test.local");
+    const statuses: string[] = [];
+    client.subscribe((s) => statuses.push(s.status));
+    client.connect();
+    const socket = FakeSocket.last!;
+    socket.onopen?.();
+
+    vi.advanceTimersByTime(30_000);
+    expect(socket.sent).toEqual(["ping"]);
+
+    // Answered: the connection stays up.
+    socket.onmessage?.({ data: "pong" });
+    vi.advanceTimersByTime(30_000);
+    expect(socket.sent).toEqual(["ping", "ping"]);
+    expect(socket.closed).toBe(false);
+
+    // Half-open past the timeout: closed by hand, since onclose never fires.
+    vi.advanceTimersByTime(90_000);
+    expect(socket.closed).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("ignores a pong instead of treating it as a malformed frame", () => {
+    const client = new FeedClient("0xabc", "ws://test.local");
+    const snapshots: number[] = [];
+    client.subscribe((s) => snapshots.push(s.nodes.size));
+    client.connect();
+    const socket = FakeSocket.last!;
+    socket.onopen?.();
+
+    // Drain the frame the "live" status queued, so the count is the pong's.
+    runFrame();
+    const before = snapshots.length;
+    socket.onmessage?.({ data: "pong" });
+    runFrame();
+    // A pong is transport, not data: it must not publish a snapshot.
+    expect(snapshots).toHaveLength(before);
   });
 });

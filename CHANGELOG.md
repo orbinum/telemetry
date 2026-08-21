@@ -12,6 +12,72 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-21
+
+### Fixed
+
+- **Every relative timestamp was off by the viewer's clock error.** "Last
+  block: 4s" was `Date.now()` in the browser minus a timestamp stamped by the
+  server — two different clocks. A machine running a minute fast reported every
+  node as having produced its last block a minute earlier than it did, silently,
+  with nothing on screen to suggest the number was wrong.
+
+  The `init` frame now carries the server's clock, the client measures the
+  difference once per connection, and `useTick` returns corrected time. It is
+  the only place in the frontend that reads a wall clock, so every relative
+  label is right by construction and a new one cannot forget to adjust. The
+  offset is remeasured on each reconnect, which is what re-syncs a laptop that
+  resumed from sleep with a drifted clock.
+
+- **A node going stale could stay invisible.** The flag is computed deep in the
+  block-handling path, but the feed only ships what the hub was told is dirty,
+  and nothing marked those nodes. The amber "no recent block" dot appeared only
+  when some unrelated event happened to mark the same node dirty — the one
+  indicator that cannot tolerate arbitrary latency.
+
+  The chain now collects the ids whose flag flipped and the Durable Object
+  drains them into the hub. Only transitions are collected: a node already known
+  to be stale would otherwise be rebroadcast on every sweep, turning a quiet
+  chain into a stream of no-op frames.
+
+  Two things surfaced while building it. The sweep runs *before* the incoming
+  block is applied — matching the reference — and `updateBlock` clears the flag,
+  so the very node carrying the block is marked stale a moment before being
+  cleared again; those phantom transitions are filtered on the way out. And the
+  sweep only ever ran from the block handler, which meant a chain that stopped
+  producing blocks entirely never swept again and left every node marked live
+  forever. The reaper alarm now sweeps too, which is the case where the
+  indicator matters most.
+
+- **A half-open socket showed frozen data as "live".** A connection dropped by
+  an intermediary without a FIN never fires `close`, so the feed sat silent
+  while the page kept claiming to be live. Silence is indistinguishable from a
+  healthy chain with nothing new to report, which makes it the worst failure
+  mode a telemetry dashboard can have.
+
+  The client now pings every 30s and tears the socket down after two unanswered
+  intervals, letting the existing reconnect take over. The server answers from
+  the runtime's WebSocket auto-response, so a hibernating Durable Object stays
+  hibernating — the whole scheme costs one frame each way per client per 30s and
+  no wall-clock billing. Any incoming frame counts as proof of life, not just
+  the pong: a busy chain may never leave a gap long enough for the timeout to
+  notice.
+
+### Added
+
+- **The feed wire format is versioned.** A tab left open across a deploy that
+  reshapes `FeedNode` had no way to tell it was reading frames it no longer
+  understood; the fields it expected were simply absent and it rendered wrong
+  data rather than failing. The `init` frame now carries `FEED_VERSION`, and a
+  client that does not recognise it discards the frame, stops reconnecting and
+  offers a reload.
+
+  Reloading is left to the user on purpose: doing it automatically loops
+  against a server that is mid-rollout between two versions. The number rises
+  only when a field is removed or reinterpreted — adding an optional one does
+  not count, since older clients ignore what they do not read, which is the
+  reason the wire format uses named keys.
+
 ## [0.4.4] - 2026-08-21
 
 ### Fixed
@@ -605,10 +671,10 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/orbinum/telemetry/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/orbinum/telemetry/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/orbinum/telemetry/compare/v0.4.2...v0.4.3
-[0.5.0]: https://github.com/orbinum/telemetry/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/orbinum/telemetry/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/orbinum/telemetry/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/orbinum/telemetry/compare/v0.3.1...v0.4.0

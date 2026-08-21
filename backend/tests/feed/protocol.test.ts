@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFeedMessage } from "../../../shared/protocol/feed";
+import { FEED_VERSION, parseFeedMessage } from "../../../shared/protocol/feed";
 import type { FeedMessage, FeedNode } from "../../../shared/protocol/feed";
 
 const node: FeedNode = {
@@ -19,6 +19,8 @@ describe("feed protocol round-trip", () => {
       "init",
       {
         t: "init",
+        v: FEED_VERSION,
+        serverTime: 1_700_000_000_000,
         chain: { genesisHash: "0x" + "cd".repeat(32), label: "Orbinum Testnet", nodeCount: 1 },
         nodes: [node],
         done: true,

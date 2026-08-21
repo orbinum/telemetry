@@ -9,6 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connectFeed, resetFeed, useFeedStore } from "../../src/stores/feedStore";
+import { FEED_VERSION } from "../../../shared/protocol/feed";
 import type { FeedMessage } from "../../../shared/protocol/feed";
 
 class FakeSocket {
@@ -62,6 +63,8 @@ function populate(): FakeSocket {
   socket.onopen?.();
   socket.emit({
     t: "init",
+    v: FEED_VERSION,
+    serverTime: Date.now(),
     chain: {
       genesisHash: "0xdevnet",
       label: "Development",
@@ -108,6 +111,8 @@ describe("resetFeed", () => {
 
     socket.emit({
       t: "init",
+      v: FEED_VERSION,
+      serverTime: Date.now(),
       chain: { genesisHash: "0xdevnet", label: "Development", nodeCount: 99 },
       nodes: [],
       done: true,

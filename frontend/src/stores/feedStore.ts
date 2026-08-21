@@ -18,6 +18,8 @@ interface FeedState {
   nodes: Map<number, FeedNode>;
   chain?: FeedChain;
   status: FeedStatus;
+  /** Add to `Date.now()` to read the server's clock. See `useTick`. */
+  clockOffset: number;
   /** Node ids in display order, recomputed once per flush, not per render. */
   order: number[];
   /** Case-insensitive substring matched against name and validator. */
@@ -36,6 +38,7 @@ export const useFeedStore = create<FeedState>(() => ({
   nodes: new Map(),
   chain: undefined,
   status: "connecting",
+  clockOffset: 0,
   order: [],
   query: "",
   hiddenCount: 0,
@@ -59,6 +62,7 @@ export function connectFeed(genesisHash: string, wsBase: string): void {
     nodes: new Map(),
     chain: undefined,
     status: "connecting",
+    clockOffset: 0,
     order: [],
     hiddenCount: 0,
   });
@@ -69,6 +73,7 @@ export function connectFeed(genesisHash: string, wsBase: string): void {
       nodes: snapshot.nodes,
       chain: snapshot.chain,
       status: snapshot.status,
+      clockOffset: snapshot.clockOffset,
       ...reorder(snapshot.nodes),
     });
   });
@@ -96,6 +101,7 @@ export function resetFeed(): void {
     nodes: new Map(),
     chain: undefined,
     status: "connecting",
+    clockOffset: 0,
     order: [],
     hiddenCount: 0,
   });
@@ -132,6 +138,11 @@ export function useChain(): FeedChain | undefined {
 
 export function useFeedStatus(): FeedStatus {
   return useFeedStore((s) => s.status);
+}
+
+/** Difference between the server's clock and this browser's, in ms. */
+export function useClockOffset(): number {
+  return useFeedStore((s) => s.clockOffset);
 }
 
 export function useQuery(): string {

@@ -98,9 +98,26 @@ export interface FeedChain {
 
 // ─── Messages ────────────────────────────────────────────────────────────────
 
+/**
+ * Wire format version. Lets a tab left open across a deploy notice it is
+ * reading frames it no longer understands, instead of rendering them wrong.
+ *
+ * Bump when a field is removed or reinterpreted; adding an optional one does
+ * not count, since older clients ignore what they do not read.
+ */
+export const FEED_VERSION = 1;
+
 /** Snapshot chunk on connect; 100 nodes per frame, `done` on the last chunk. */
 export interface FeedInit {
   t: "init";
+  /** `FEED_VERSION` as the server compiled it. */
+  v: number;
+  /**
+   * The server's clock, so the browser can correct its own before rendering
+   * "N seconds ago" against server-stamped timestamps. Includes one-way
+   * latency, which is well under what these labels resolve.
+   */
+  serverTime: number;
   chain: FeedChain;
   nodes: FeedNode[];
   done: boolean;

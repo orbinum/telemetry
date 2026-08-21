@@ -38,6 +38,8 @@ export class ChainState {
   /** Wall-clock ms when the current best height was first reported. */
   private bestTimestamp?: number;
   private blockTimes: number[] = [];
+  /** Feed ids whose stale flag flipped since the last drain. */
+  private readonly wentStale = new Set<number>();
 
   constructor(genesisHash: string) {
     this.genesisHash = genesisHash;
@@ -115,6 +117,15 @@ export class ChainState {
     return this.table.takeExpired(now, timeoutMs);
   }
 
+  /**
+   * Sweep with no block to hang it on. The reference only sweeps from
+   * `handle_block`, so a chain that stops producing them leaves every node
+   * marked live forever — the case where the indicator matters most.
+   */
+  sweepStale(now: number): void {
+    this.updateStaleNodes(now);
+  }
+
   // ─── Aggregation (chain.rs handle_block) ───────────────────────────────────
 
   /**
@@ -170,8 +181,14 @@ export class ChainState {
     let finalized: BlockRef | undefined;
     let timestamp: number | undefined;
 
-    for (const node of this.table.values()) {
-      if (node.updateStale(threshold)) continue;
+    for (const { id, node } of this.table.entries()) {
+      const wasStale = node.stale;
+      if (node.updateStale(threshold)) {
+        // Transitions only; re-sending the already-stale every sweep would
+        // turn a quiet chain into a stream of no-op frames.
+        if (!wasStale) this.wentStale.add(id);
+        continue;
+      }
 
       if (node.best && (best === undefined || node.best.block.height > best.height)) {
         best = node.best.block;
@@ -187,6 +204,19 @@ export class ChainState {
       this.finalized = finalized;
       this.bestTimestamp = timestamp;
     }
+  }
+
+  /**
+   * Feed ids that became stale since the last drain — collected here rather
+   * than pushed as a message, so the domain stays free of any notion of a feed.
+   */
+  drainWentStale(): number[] {
+    if (this.wentStale.size === 0) return [];
+    // The sweep runs before the incoming block is applied, so its own node is
+    // briefly marked stale before `updateBlock` clears it. Drop those.
+    const ids = [...this.wentStale].filter((id) => this.table.getById(id)?.stale === true);
+    this.wentStale.clear();
+    return ids;
   }
 
   // ─── Queries ───────────────────────────────────────────────────────────────
