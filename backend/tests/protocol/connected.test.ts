@@ -156,4 +156,16 @@ describe("parseSystemConnected", () => {
       "0x" + bytes.map((b) => b.toString(16).padStart(2, "0")).join(""),
     );
   });
+
+  it("drops the <unknown> validator placeholder but keeps the node", () => {
+    const msg = parseSystemConnected(1, { ...payload, validator: "<unknown>", authority: true });
+    expect(msg).not.toBeNull();
+    expect(msg?.node.validator).toBeUndefined();
+    expect(msg?.node.authority).toBe(true);
+  });
+
+  it("keeps a real validator address", () => {
+    const msg = parseSystemConnected(1, { ...payload, validator: "5GrwvaEF" });
+    expect(msg?.node.validator).toBe("5GrwvaEF");
+  });
 });

@@ -6,7 +6,7 @@
  * kept in DO memory for the node's lifetime.
  */
 
-import { MAX_ADDRESS_LENGTH, isValidString } from "./limits";
+import { MAX_ADDRESS_LENGTH, isRealAddress, isValidString } from "./limits";
 import type { AfgAuthoritySetMessage } from "./types";
 
 export function parseAfgAuthoritySet(
@@ -15,5 +15,7 @@ export function parseAfgAuthoritySet(
 ): AfgAuthoritySetMessage | null {
   if (typeof p.authority_id !== "string") return null;
   if (!isValidString(p.authority_id, MAX_ADDRESS_LENGTH)) return null;
+  // A node with --validator but no usable session key announces `<unknown>`.
+  if (!isRealAddress(p.authority_id)) return null;
   return { msg: "afg.authority_set", id, authorityId: p.authority_id };
 }

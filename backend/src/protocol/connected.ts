@@ -6,7 +6,13 @@
 import { INVALID, optBoolean, optNumber, optString, reqString } from "./fields";
 import type { Maybe } from "./fields";
 import { parseHash } from "./hash";
-import { MAX_ADDRESS_LENGTH, isValidCount, isValidPeerId, isValidString } from "./limits";
+import {
+  MAX_ADDRESS_LENGTH,
+  isRealAddress,
+  isValidCount,
+  isValidPeerId,
+  isValidString,
+} from "./limits";
 import type { NodeSysInfo, SystemConnectedMessage } from "./types";
 import { splitOldStyleVersion } from "./version";
 
@@ -82,7 +88,10 @@ export function parseSystemConnected(
   // unlimited number of distinct "nodes", so the shape is checked too.
   if (!isValidPeerId(networkId)) return null;
 
-  const validator = optString(p.validator);
+  // `<unknown>` is Substrate's placeholder for "validator, address not known
+  // yet" — dropped here so the column stays empty and the D1 restore can fill it.
+  let validator = optString(p.validator);
+  if (typeof validator === "string" && !isRealAddress(validator)) validator = undefined;
   const startupTime = optString(p.startup_time);
   const ip = optString(p.ip);
   const sysinfo = parseSysInfo(p.sysinfo);

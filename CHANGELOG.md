@@ -12,6 +12,36 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-08-21
+
+### Fixed
+
+- **Validators reported their address as the literal text `<unknown>`.** Nodes
+  redeployed with telemetry verbosity 1 filled the Address column with that
+  placeholder instead of an account. Substrate sends it when a node runs with
+  `--validator` but cannot yet name its authority — no usable session key in
+  the keystore, or a key not yet in the on-chain set. At verbosity 0 the field
+  never arrives at all, so the string only became visible once the fleet
+  started reporting at 1.
+
+  It cost more than a wrong-looking cell. The address a node has already
+  reported is never overwritten, which is what stops a stale row from clobbering
+  live data — so a node holding `<unknown>` counted as "already has an address"
+  and blocked the D1 lookup that would have restored the real one from an
+  earlier session. The placeholder also reached `node_sessions`, where the most
+  recent non-NULL row wins, hiding every real address recorded before it.
+
+  Both parsers now reject it: `system.connected` drops the field and keeps the
+  node, since the rest of the message is valid and the node must still appear;
+  `afg.authority_set` is rejected whole, as the address is the only thing it
+  carries. Migration `0004` clears the rows already written.
+
+  The reference implementation does not filter this — it passes `validator` and
+  `authority_id` through untouched and renders the address as a Polkadot
+  identicon, where the placeholder fails to decode and merely logs. Orbinum
+  shows the address as text and persists it, so the same input does real damage
+  here and is worth rejecting at the boundary.
+
 ## [0.4.3] - 2026-08-20
 
 ### Added
@@ -575,7 +605,9 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/orbinum/telemetry/compare/v0.4.3...v0.4.4
+[0.4.3]: https://github.com/orbinum/telemetry/compare/v0.4.2...v0.4.3
 [0.5.0]: https://github.com/orbinum/telemetry/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/orbinum/telemetry/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/orbinum/telemetry/compare/v0.4.0...v0.4.1

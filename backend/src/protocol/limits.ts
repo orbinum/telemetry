@@ -66,3 +66,21 @@ const PEER_ID_RE = /^[1-9A-HJ-NP-Za-km-z]{46,64}$/;
 export function isValidPeerId(value: string): boolean {
   return PEER_ID_RE.test(value);
 }
+
+/**
+ * Whether an address the node reported is a real one.
+ *
+ * Substrate fills `validator` / `authority_id` with the literal string
+ * `<unknown>` when the node runs with `--validator` but cannot name its
+ * authority yet — no session key in the keystore, or the key not yet in the
+ * on-chain set. Nodes started at verbosity ≥ 1 send it on connect, so without
+ * this check the placeholder lands in the Address column verbatim and, worse,
+ * counts as "already has an address", which blocks the D1 restore that would
+ * have filled the gap with the last real one.
+ *
+ * Rejected rather than message-rejected: the rest of `system.connected` is
+ * valid and the node must still appear in the table.
+ */
+export function isRealAddress(value: string): boolean {
+  return value !== "<unknown>" && value.length > 0;
+}

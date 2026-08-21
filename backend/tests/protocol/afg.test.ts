@@ -16,4 +16,11 @@ describe("parseAfgAuthoritySet", () => {
     expect(parseAfgAuthoritySet(1, { msg: "afg.authority_set" })).toBeNull();
     expect(parseAfgAuthoritySet(1, { msg: "afg.authority_set", authority_id: 5 })).toBeNull();
   });
+
+  it("rejects the <unknown> placeholder a keyless validator reports", () => {
+    expect(
+      parseAfgAuthoritySet(1, { msg: "afg.authority_set", authority_id: "<unknown>" }),
+    ).toBeNull();
+    expect(parseAfgAuthoritySet(1, { msg: "afg.authority_set", authority_id: "" })).toBeNull();
+  });
 });
