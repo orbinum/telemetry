@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FEED_VERSION } from "../../../shared/protocol/feed";
 import { FeedClient } from "../../src/services/feed-client";
+import type { FeedSnapshot } from "../../src/services/feed-client";
 import type { FeedChain, FeedMessage, FeedNode } from "../../../shared/protocol/feed";
 
 class FakeSocket {
@@ -290,5 +291,54 @@ describe("FeedClient", () => {
     runFrame();
     // A pong is transport, not data: it must not publish a snapshot.
     expect(snapshots).toHaveLength(before);
+  });
+
+  it("merges deltas instead of replacing, so immutable fields survive", () => {
+    const client = new FeedClient("0xabc", "ws://test.local");
+    let last: Map<number, FeedNode> = new Map();
+    client.subscribe((s) => (last = s.nodes));
+    client.connect();
+    const socket = FakeSocket.last!;
+    socket.onopen?.();
+
+    // The snapshot introduces the node with the fields that only ship once.
+    socket.emit(
+      init(
+        { genesisHash: "0xabc", label: "Test", nodeCount: 1 },
+        [{ ...node(1, 10), targetOs: "linux", sysinfo: { cpu: "Ryzen", coreCount: 16 } }],
+        true,
+      ),
+    );
+    runFrame();
+    expect(last.get(1)?.sysinfo?.coreCount).toBe(16);
+
+    // A later delta carries only what changed. Replacing the row wholesale
+    // would silently blank the hardware columns.
+    socket.emit({ t: "upd", n: [{ ...node(1, 11) }] });
+    runFrame();
+    expect(last.get(1)?.best?.height).toBe(11);
+    expect(last.get(1)?.sysinfo?.coreCount).toBe(16);
+    expect(last.get(1)?.targetOs).toBe("linux");
+  });
+
+  it("keeps chart series apart from the node rows", () => {
+    const client = new FeedClient("0xabc", "ws://test.local");
+    let snapshot: FeedSnapshot | undefined;
+    client.subscribe((s) => (snapshot = s));
+    client.connect();
+    const socket = FakeSocket.last!;
+    socket.onopen?.();
+
+    socket.emit({
+      t: "series",
+      n: [{ id: 1, upload: [10, 20], download: [5], usedStateCacheSize: [1], chartStamps: [99] }],
+    });
+    runFrame();
+    expect(snapshot?.series.get(1)?.upload).toEqual([10, 20]);
+
+    // A removed node takes its series with it.
+    socket.emit({ t: "rm", n: [1] });
+    runFrame();
+    expect(snapshot?.series.get(1)).toBeUndefined();
   });
 });

@@ -8,13 +8,15 @@
  */
 
 import { FEED_VERSION, parseFeedMessage } from "../../../shared/protocol/feed";
-import type { FeedChain, FeedNode } from "../../../shared/protocol/feed";
+import type { FeedChain, FeedNode, FeedNodeSeries } from "../../../shared/protocol/feed";
 
 /** `outdated` is terminal — only fresh code recovers; the rest self-heal. */
 export type FeedStatus = "connecting" | "live" | "reconnecting" | "outdated";
 
 export interface FeedSnapshot {
   nodes: Map<number, FeedNode>;
+  /** Chart series, keyed by node id. Updated on their own slower cadence. */
+  series: Map<number, FeedNodeSeries>;
   chain?: FeedChain;
   status: FeedStatus;
   /** Add to `Date.now()` for the server's clock; 0 until the first init. */
@@ -40,6 +42,7 @@ const SOCKET_OPEN = 1;
 export class FeedClient {
   private socket?: WebSocket;
   private nodes = new Map<number, FeedNode>();
+  private series: Map<number, FeedNodeSeries> = new Map();
   private chain?: FeedChain;
   private status: FeedStatus = "connecting";
 
@@ -177,17 +180,35 @@ export class FeedClient {
         this.clockOffset = msg.serverTime - Date.now();
         // A fresh init after a reconnect replaces the world: the first chunk
         // clears, later chunks accumulate.
-        if (this.isFirstInitChunk) this.nodes.clear();
+        if (this.isFirstInitChunk) {
+          this.nodes.clear();
+          this.series = new Map();
+        }
         this.isFirstInitChunk = msg.done;
         this.chain = msg.chain;
         for (const node of msg.nodes) this.nodes.set(node.id, node);
         break;
       case "upd":
-        // Upsert semantics: an unknown id is a new node.
-        for (const node of msg.n) this.nodes.set(node.id, node);
+        // Upsert semantics: an unknown id is a new node. Merged rather than
+        // replaced — a delta omits the immutable fields, and overwriting the
+        // row would drop the sysinfo that only ever arrives once.
+        for (const node of msg.n) {
+          const previous = this.nodes.get(node.id);
+          this.nodes.set(node.id, previous === undefined ? node : { ...previous, ...node });
+        }
+        break;
+      case "series":
+        // New identity so a memoized consumer sees the change; the entries
+        // themselves are shared, like the node rows.
+        this.series = new Map(this.series);
+        for (const entry of msg.n) this.series.set(entry.id, entry);
         break;
       case "rm":
-        for (const id of msg.n) this.nodes.delete(id);
+        this.series = new Map(this.series);
+        for (const id of msg.n) {
+          this.nodes.delete(id);
+          this.series.delete(id);
+        }
         break;
       case "chain":
         this.chain = msg.c;
@@ -215,6 +236,7 @@ export class FeedClient {
     // rows themselves are the same objects, so memo'd rows stay memo'd.
     const snapshot: FeedSnapshot = {
       nodes: new Map(this.nodes),
+      series: this.series,
       chain: this.chain,
       status: this.status,
       clockOffset: this.clockOffset,

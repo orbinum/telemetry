@@ -7,7 +7,7 @@
  */
 
 import { FEED_VERSION } from "../../../shared/protocol/feed";
-import { toFeedChain, toFeedNode } from "../feed/serialize";
+import { toFeedChain, toFeedNode, toFeedNodeSeries } from "../feed/serialize";
 import type { FeedMessage } from "../../../shared/protocol/feed";
 import type { ChainState } from "../domain/chain-state";
 import type { FeedHub } from "../feed/hub";
@@ -18,6 +18,13 @@ const FLUSH_INTERVAL_MS = 100;
 /** Nodes per frame in the initial snapshot (plan §5). */
 const INIT_CHUNK_SIZE = 100;
 
+/**
+ * Chart series cadence. Deliberately far slower than the delta batch: the four
+ * series are the bulk of a node's payload, and they are 20-point moving
+ * averages, so a sparkline gains nothing from a 100 ms refresh.
+ */
+const SERIES_INTERVAL_MS = 5_000;
+
 /** Supplies the live sockets — `ctx.getWebSockets()` in production. */
 export type SocketSource = () => WebSocket[];
 
@@ -25,8 +32,16 @@ export class FeedBroadcaster {
   private readonly hub: FeedHub;
   private readonly sockets: SocketSource;
   private flushTimer?: ReturnType<typeof setTimeout>;
+
   /** Last chain frame sent, so `chain` only goes out when aggregates moved. */
   private lastChainFrame = "";
+
+  /**
+   * Ids already introduced to browsers. A node absent from this set has never
+   * been sent, so its delta must carry the session-fixed fields too.
+   */
+  private readonly introduced = new Set<number>();
+  private lastSeriesAt = 0;
 
   constructor(hub: FeedHub, sockets: SocketSource) {
     this.hub = hub;
@@ -54,7 +69,9 @@ export class FeedBroadcaster {
     }
 
     const chainFrame = toFeedChain(chain);
-    const nodes = chain.list().map(({ id, node }) => toFeedNode(id, node));
+    const entries = chain.list();
+    const nodes = entries.map(({ id, node }) => toFeedNode(id, node, true));
+    for (const { id } of entries) this.introduced.add(id);
     const chunks = Math.max(1, Math.ceil(nodes.length / INIT_CHUNK_SIZE));
 
     for (let i = 0; i < chunks; i++) {
@@ -67,6 +84,22 @@ export class FeedBroadcaster {
         done: i === chunks - 1,
       });
     }
+
+    // Sparklines would otherwise stay empty until the next series tick.
+    if (entries.length > 0) {
+      this.send(socket, {
+        t: "series",
+        n: entries.map(({ id, node }) => toFeedNodeSeries(id, node)),
+      });
+    }
+  }
+
+  /**
+   * Re-send a node's session-fixed fields on its next delta. Called when
+   * hwbench lands, which is the one such field that arrives after connect.
+   */
+  reintroduce(id: number): void {
+    this.introduced.delete(id);
   }
 
   // ─── Batching ──────────────────────────────────────────────────────────────
@@ -86,6 +119,7 @@ export class FeedBroadcaster {
     const { updated, removed, chainChanged } = this.hub.drain();
 
     if (removed.length > 0) {
+      for (const id of removed) this.introduced.delete(id);
       this.broadcast({ t: "rm", n: removed });
     }
 
@@ -93,11 +127,16 @@ export class FeedBroadcaster {
       const nodes = updated
         .map((id) => {
           const node = chain.getById(id);
-          return node === undefined ? undefined : toFeedNode(id, node);
+          if (node === undefined) return undefined;
+          const first = !this.introduced.has(id);
+          if (first) this.introduced.add(id);
+          return toFeedNode(id, node, first);
         })
         .filter((node) => node !== undefined);
       if (nodes.length > 0) this.broadcast({ t: "upd", n: nodes });
     }
+
+    this.maybeSendSeries(chain);
 
     // Aggregates ride along with every batch, but only when they moved.
     const chainFrame = toFeedChain(chain);
@@ -106,6 +145,22 @@ export class FeedBroadcaster {
       this.lastChainFrame = serialized;
       this.broadcast({ t: "chain", c: chainFrame });
     }
+  }
+
+  /**
+   * Broadcast every node's chart series, at most once per interval.
+   *
+   * Driven off the flush rather than its own timer: the flush already runs
+   * whenever anything is pending, and a chain quiet enough to skip it has no
+   * new samples to send either.
+   */
+  private maybeSendSeries(chain: ChainState): void {
+    const now = Date.now();
+    if (now - this.lastSeriesAt < SERIES_INTERVAL_MS) return;
+    this.lastSeriesAt = now;
+
+    const series = chain.list().map(({ id, node }) => toFeedNodeSeries(id, node));
+    if (series.length > 0) this.broadcast({ t: "series", n: series });
   }
 
   // ─── Fanout ────────────────────────────────────────────────────────────────

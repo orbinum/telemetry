@@ -29,6 +29,26 @@ export interface FeedGeo {
 /** The role a node plays, as the table reports it. */
 export type NodeType = "validator" | "rpc";
 
+/** Self-reported hardware. Every field is optional: nodes may omit any of it. */
+export interface FeedSysInfo {
+  cpu?: string;
+  /** Bytes of RAM. */
+  memory?: number;
+  coreCount?: number;
+  linuxKernel?: string;
+  linuxDistro?: string;
+  isVirtualMachine?: boolean;
+}
+
+/** Benchmark scores from `sysinfo.hwbench`, in the node's own units. */
+export interface FeedHwBench {
+  cpuHashrateScore: number;
+  memoryMemcpyScore: number;
+  diskSequentialWriteScore?: number;
+  diskRandomWriteScore?: number;
+  parallelCpuHashrateScore?: number;
+}
+
 /** One node row, as the UI renders it. */
 export interface FeedNode {
   /** Numeric id, unique within a chain feed session. */
@@ -83,6 +103,23 @@ export interface FeedNode {
   finalized?: FeedBlock;
   stale: boolean;
   geo?: FeedGeo;
+
+  // ── Immutable, sent once ───────────────────────────────────────────────────
+  // Fixed for the life of a node's session, so they ride the `init` and the
+  // first `upd` that introduces the node, and are omitted from later deltas.
+  // Upsert semantics keep them: the client merges, so an absent key means
+  // "unchanged", never "gone". Re-sending them each 100 ms batch would add
+  // ~57% to the hot frame for data that cannot have changed.
+
+  targetOs?: string;
+  targetArch?: string;
+  targetEnv?: string;
+  sysinfo?: FeedSysInfo;
+  /**
+   * Arrives shortly *after* connect, so a node can appear before its scores do.
+   * That later arrival is itself a change, and ships as a normal delta.
+   */
+  hwbench?: FeedHwBench;
 }
 
 /** Chain-level aggregates. */
@@ -105,7 +142,7 @@ export interface FeedChain {
  * Bump when a field is removed or reinterpreted; adding an optional one does
  * not count, since older clients ignore what they do not read.
  */
-export const FEED_VERSION = 1;
+export const FEED_VERSION = 2;
 
 /** Snapshot chunk on connect; 100 nodes per frame, `done` on the last chunk. */
 export interface FeedInit {
@@ -123,10 +160,39 @@ export interface FeedInit {
   done: boolean;
 }
 
-/** Batched upserts (100 ms batches). Unknown ids are inserts. */
+/**
+ * Batched upserts (100 ms batches). Unknown ids are inserts.
+ *
+ * **Merged, not replaced**: a delta carries only what changed, so a key the
+ * frame omits keeps its previous value. Overwriting the row wholesale would
+ * drop the immutable fields that only ever ship once.
+ */
 export interface FeedUpdate {
   t: "upd";
   n: FeedNode[];
+}
+
+/**
+ * Chart series, on their own slower cadence.
+ *
+ * Four bounded 20-point series per node, which is ~1.4 kB of the ~2.5 kB a
+ * fully-populated node weighs — putting them in the 100 ms batch tripled the
+ * hot frame. They are moving averages over the last 20 intervals, so a 5 s
+ * refresh loses nothing a sparkline could show.
+ */
+export interface FeedSeries {
+  t: "series";
+  n: FeedNodeSeries[];
+}
+
+export interface FeedNodeSeries {
+  id: number;
+  /** Bytes/s, oldest first. Same index across all four arrays. */
+  upload: number[];
+  download: number[];
+  usedStateCacheSize: number[];
+  /** Wall-clock ms each sample was taken, for the x axis. */
+  chartStamps: number[];
 }
 
 /** Nodes that left (disconnect or 60s reaper). */
@@ -141,11 +207,16 @@ export interface FeedChainUpdate {
   c: FeedChain;
 }
 
-export type FeedMessage = FeedInit | FeedUpdate | FeedRemove | FeedChainUpdate;
+export type FeedMessage =
+  | FeedInit
+  | FeedUpdate
+  | FeedRemove
+  | FeedChainUpdate
+  | FeedSeries;
 
 // ─── Parsing (browser side) ──────────────────────────────────────────────────
 
-const TAGS = new Set(["init", "upd", "rm", "chain"]);
+const TAGS = new Set(["init", "upd", "rm", "chain", "series"]);
 
 /** Parse one feed frame; null for anything that isn't a known message. */
 export function parseFeedMessage(raw: string): FeedMessage | null {

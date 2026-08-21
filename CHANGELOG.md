@@ -12,6 +12,44 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-21
+
+### Added
+
+- **Node hardware reaches the browser.** The backend had parsed, validated and
+  held sysinfo, hwbench and the bandwidth series since Phase 2 — the plan said
+  to capture them from day one and render them later — but `toFeedNode` never
+  emitted any of it, so ten columns and fourteen of fifteen chain statistics had
+  no data to draw from. The feed now carries the target triple, sysinfo (CPU,
+  memory, cores, kernel, distro, VM flag) and the five benchmark scores.
+
+  Measuring first changed the design. At 500 nodes a delta frame weighed 338 kB;
+  adding everything naively took it to 1213 kB, every 100 ms. The four chart
+  series were most of that, and they are 20-point moving averages, so refreshing
+  them ten times a second buys nothing a sparkline could show.
+
+  So the feed now has three cadences instead of one. The snapshot carries
+  everything. The 100 ms delta carries only what changed — the target triple and
+  sysinfo are fixed for a session and ride the frame that introduces a node,
+  never the ones after it. The series move to their own message on a 5 s tick.
+  `hwbench` counts as session-fixed too even though it lands after connect: the
+  Durable Object reintroduces the node when it arrives, so the next delta
+  carries the full row rather than repeating five scores forever.
+
+  The hot frame ends up at 338 kB — unchanged — with all of the new data
+  available. Sustained, that is 3.4 MB/s against 11.8 MB/s had it all gone in
+  the delta.
+
+### Changed
+
+- **`upd` frames merge instead of replacing.** A delta now omits what cannot
+  have changed, so overwriting the row wholesale would blank the hardware fields
+  that only ever ship once. An absent key means "unchanged", never "gone".
+
+  `FEED_VERSION` rises to 2 for this. Every new field is optional, so on that
+  count older clients would have coped — but the rule for reading `upd` itself
+  changed, which is exactly the condition the version was added to catch.
+
 ## [0.5.0] - 2026-08-21
 
 ### Fixed
@@ -671,7 +709,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/orbinum/telemetry/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/orbinum/telemetry/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/orbinum/telemetry/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/orbinum/telemetry/compare/v0.4.2...v0.4.3

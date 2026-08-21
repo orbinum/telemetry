@@ -12,10 +12,12 @@ import { computeOrder, loadSort, nextSort, normalizeQuery, saveSort } from "../d
 import { FeedClient } from "../services/feed-client";
 import type { Sort, SortKey } from "../domain/node-order";
 import type { FeedStatus } from "../services/feed-client";
-import type { FeedChain, FeedNode } from "../../../shared/protocol/feed";
+import type { FeedChain, FeedNode, FeedNodeSeries } from "../../../shared/protocol/feed";
 
 interface FeedState {
   nodes: Map<number, FeedNode>;
+  /** Chart series per node, refreshed on their own slower cadence. */
+  series: Map<number, FeedNodeSeries>;
   chain?: FeedChain;
   status: FeedStatus;
   /** Add to `Date.now()` to read the server's clock. See `useTick`. */
@@ -36,6 +38,7 @@ interface FeedState {
  */
 export const useFeedStore = create<FeedState>(() => ({
   nodes: new Map(),
+  series: new Map(),
   chain: undefined,
   status: "connecting",
   clockOffset: 0,
@@ -60,6 +63,7 @@ export function connectFeed(genesisHash: string, wsBase: string): void {
   disconnectFeed();
   useFeedStore.setState({
     nodes: new Map(),
+    series: new Map(),
     chain: undefined,
     status: "connecting",
     clockOffset: 0,
@@ -71,6 +75,7 @@ export function connectFeed(genesisHash: string, wsBase: string): void {
   unsubscribe = client.subscribe((snapshot) => {
     useFeedStore.setState({
       nodes: snapshot.nodes,
+      series: snapshot.series,
       chain: snapshot.chain,
       status: snapshot.status,
       clockOffset: snapshot.clockOffset,
@@ -99,6 +104,7 @@ export function resetFeed(): void {
   disconnectFeed();
   useFeedStore.setState({
     nodes: new Map(),
+    series: new Map(),
     chain: undefined,
     status: "connecting",
     clockOffset: 0,
@@ -138,6 +144,11 @@ export function useChain(): FeedChain | undefined {
 
 export function useFeedStatus(): FeedStatus {
   return useFeedStore((s) => s.status);
+}
+
+/** One node's chart series, or undefined before the first series frame. */
+export function useNodeSeries(id: number): FeedNodeSeries | undefined {
+  return useFeedStore((s) => s.series.get(id));
 }
 
 /** Difference between the server's clock and this browser's, in ms. */

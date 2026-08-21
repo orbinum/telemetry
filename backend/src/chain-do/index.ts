@@ -90,6 +90,9 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
       if (msg.msg === "afg.authority_set") {
         this.recordValidator(this.chain.getById(id), msg.authorityId);
       }
+      // The one session-fixed field that lands after connect, so the next
+      // delta has to carry the full row.
+      if (msg.msg === "sysinfo.hwbench") this.feed.reintroduce(id);
     }
     this.feed.schedule(this.chain);
     return true;
