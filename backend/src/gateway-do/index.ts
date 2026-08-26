@@ -12,6 +12,12 @@
  *   - `MessageRouter` owns the ingest policy (allowlist, node cap, routing)
  *   - `ChainDirectory` owns the SQLite table
  *   - this class owns only sockets and their lifecycle
+ *
+ * Node sockets use the hibernation API. A plain `accept()` bills wall-clock
+ * duration for as long as the socket is open, and node sockets are open
+ * permanently — with four partitions that is four objects billed around the
+ * clock whether or not a frame arrives. Per-socket state therefore lives in
+ * the socket's attachment (see `NodeConnection`), not in a field here.
  */
 
 import { DurableObject } from "cloudflare:workers";
@@ -43,6 +49,13 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
     super(ctx, env);
     this.directory = new ChainDirectory(ctx.storage.sql);
     this.idPrefix = ctx.id.toString();
+
+    // Sockets outlive the object under hibernation, so a counter restarting at
+    // 1 would hand a new connection the id of one that is still streaming.
+    // Both build the same node keys, and the ChainDO pools them into one
+    // table — the older node would be silently replaced. Resume past the
+    // highest id still connected instead.
+    this.nextConnId = highestConnId(ctx.getWebSockets(), this.idPrefix) + 1;
 
     const allowedChains = parseAllowedChains(env);
     if (allowedChains.size === 0) {
@@ -85,40 +98,68 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
 
-    server.accept();
+    // Hibernatable accept: the object is billed only while handling a frame,
+    // not for the lifetime of a socket that never closes.
+    this.ctx.acceptWebSocket(server);
     const conn = new NodeConnection(
       `${this.idPrefix}-${this.nextConnId++}`,
       server,
       parseGeoHeader(request.headers),
     );
-
-    server.addEventListener("message", (event) => {
-      const text = frameToText(event.data);
-      if (text === null) return;
-      if (typeof text === "string") {
-        this.onFrame(conn, text);
-      } else {
-        void text.then((raw) => this.onFrame(conn, raw));
-      }
-    });
-
-    const drop = () => {
-      conn.markClosed();
-      this.releaseConnection(conn);
-    };
-    server.addEventListener("close", drop);
-    server.addEventListener("error", drop);
+    conn.persist();
 
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  /** Budget first, then parse, then route — in that order, always. */
-  private onFrame(conn: NodeConnection, raw: string): void {
+  // ─── Hibernation handlers ──────────────────────────────────────────────────
+
+  /**
+   * The runtime delivers these one at a time per socket, so the frames of one
+   * connection cannot interleave — which is what preserves the ordering the
+   * ChainDO needs (`system.connected` before its intervals) without the
+   * hand-rolled promise chain this used to carry.
+   */
+  override async webSocketMessage(socket: WebSocket, data: string | ArrayBuffer): Promise<void> {
+    const conn = NodeConnection.fromSocket(socket);
+    // No attachment means a socket this object never accepted as a node feed.
+    if (conn === undefined) return;
+
+    const text = frameToText(data);
+    if (text === null) return;
+    await this.onFrame(conn, typeof text === "string" ? text : await text);
+
+    // One place decides what a handled frame leaves behind, so no branch of
+    // `onFrame` can forget to save the budget it just charged.
+    conn.persist();
+    if (conn.isClosed) this.releaseConnection(conn);
+  }
+
+  override async webSocketClose(socket: WebSocket): Promise<void> {
+    this.onSocketGone(socket);
+  }
+
+  override async webSocketError(socket: WebSocket): Promise<void> {
+    this.onSocketGone(socket);
+  }
+
+  private onSocketGone(socket: WebSocket): void {
+    const conn = NodeConnection.fromSocket(socket);
+    if (conn === undefined) return;
+    conn.markClosed();
+    this.releaseConnection(conn);
+  }
+
+  /**
+   * Budget first, then parse, then route — in that order, always.
+   *
+   * Leaves persistence and teardown to the caller; every exit here is just
+   * "this frame is done".
+   */
+  private async onFrame(conn: NodeConnection, raw: string): Promise<void> {
     if (conn.isClosed) return;
 
     if (!conn.chargeBytes(raw.length, Date.now())) {
       conn.close(CLOSE_BYTE_BUDGET, "byte budget exceeded");
-      this.releaseConnection(conn);
       return;
     }
 
@@ -131,10 +172,7 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
       return;
     }
 
-    conn.enqueue(async () => {
-      await this.router.route(conn, msg);
-      if (conn.isClosed) this.releaseConnection(conn);
-    });
+    await this.router.route(conn, msg);
   }
 
   /** Forget a connection's nodes, telling every chain it fed. */
@@ -149,4 +187,20 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
   private chainStub(genesisHash: string): DurableObjectStub<ChainDO> {
     return this.env.CHAIN.get(this.env.CHAIN.idFromName(genesisHash));
   }
+}
+
+/**
+ * The largest connection number among sockets already attached to this
+ * partition. Ids look like `<doId>-<n>`; anything unparseable is ignored
+ * rather than trusted, since the attachment is only as good as the last write.
+ */
+function highestConnId(sockets: WebSocket[], idPrefix: string): number {
+  let highest = 0;
+  for (const socket of sockets) {
+    const conn = NodeConnection.fromSocket(socket);
+    if (conn === undefined || !conn.id.startsWith(`${idPrefix}-`)) continue;
+    const n = Number(conn.id.slice(idPrefix.length + 1));
+    if (Number.isSafeInteger(n) && n > highest) highest = n;
+  }
+  return highest;
 }

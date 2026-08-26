@@ -14,6 +14,29 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Fixed
 
+- **The four gateway objects were billed around the clock.** `GatewayDO`
+  accepted node sockets with a plain `accept()`, which bills wall-clock
+  duration for as long as the socket is open — and node sockets are open
+  permanently. Four partitions therefore ran up duration charges 24/7 whether
+  or not a frame ever arrived. `ChainDO` had used the hibernation API for
+  browser feeds since Phase 4; the ingest half never got the same treatment.
+
+  Node sockets are now accepted with `ctx.acceptWebSocket()`, so a partition is
+  billed only while it is actually handling a frame.
+
+  That moves per-socket state out of the object, since hibernation evicts it
+  while the socket lives on. The byte budget, the geo and the cached
+  `system.connected` now ride the socket's attachment. The budget mattered
+  most: had it stayed in memory, a client could have reset its own rate limit
+  for free by making the object drop.
+
+  Two things fell out of the change. The hand-rolled promise chain that kept a
+  connection's frames in order is gone — the runtime already delivers one
+  socket's messages one at a time. And the connection-id counter now resumes
+  past the highest id still connected: restarting at 1 after an eviction would
+  have handed a new socket the id of one still streaming, and since both build
+  the same node keys, the older node would have been silently replaced.
+
 - **A brief outage made every open tab reconnect in lockstep.** The feed client
   retried on a fixed 2 s delay with no jitter and no ceiling, so the moment a
   chain's Durable Object blipped, every browser watching it came back at the

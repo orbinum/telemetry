@@ -1,16 +1,31 @@
 /**
  * NodeConnection — one node socket and the limits that police it.
  *
- * Owns everything that is per-connection state: the byte budget, the ordered
- * RPC pipeline, and the cached system.connected used to recover from a
- * ChainDO eviction. Keeping this out of the DO leaves the gateway to do only
- * routing.
+ * Owns everything that is per-connection state: the byte budget and the cached
+ * system.connected used to recover from a ChainDO eviction. Keeping this out of
+ * the DO leaves the gateway to do only routing.
+ *
+ * The state lives in a WebSocket attachment rather than a field on the DO,
+ * because the gateway uses the hibernation API: the object is evicted while
+ * node sockets stay open, and anything held only in memory would come back
+ * empty. That matters most for the byte budget — a client that could drop the
+ * object at will would otherwise reset its own rate limit.
  */
 
 import { BYTE_BUDGET_BYTES, BYTE_BUDGET_WINDOW_MS } from "../config/limits";
 import { RollingTotal } from "../domain/rolling-total";
+import type { RollingTotalState } from "../domain/rolling-total";
 import type { NodeGeo } from "../domain/node-state";
 import type { SystemConnectedMessage } from "../protocol/node";
+
+/** What survives an eviction, as stored in the socket's attachment. */
+export interface NodeConnectionState {
+  id: string;
+  geo?: NodeGeo;
+  bytes: RollingTotalState;
+  /** Cached system.connected per node id, as entries (a Map is not JSON). */
+  connected: Array<[number, SystemConnectedMessage]>;
+}
 
 export class NodeConnection {
   /**
@@ -35,19 +50,46 @@ export class NodeConnection {
    */
   private readonly connectedCache = new Map<number, SystemConnectedMessage>();
 
-  /**
-   * Serialized RPC pipeline. Calls to a ChainDO must keep their order
-   * (system.connected before its intervals), so each frame chains onto the
-   * previous one instead of racing it.
-   */
-  private pipeline: Promise<void> = Promise.resolve();
-
   private closed = false;
 
   constructor(id: string, socket: WebSocket, geo: NodeGeo | undefined) {
     this.id = id;
     this.socket = socket;
     this.geo = geo;
+  }
+
+  // ─── Attachment ────────────────────────────────────────────────────────────
+
+  /**
+   * Rebuild from the socket's attachment after an eviction. Returns undefined
+   * for a socket the gateway never attached state to, which is the one case
+   * that must not be treated as a live connection.
+   */
+  static fromSocket(socket: WebSocket): NodeConnection | undefined {
+    const state = socket.deserializeAttachment() as NodeConnectionState | null;
+    if (state === null || typeof state !== "object") return undefined;
+
+    const conn = new NodeConnection(state.id, socket, state.geo);
+    conn.bytes.restore(state.bytes);
+    for (const [id, msg] of state.connected) conn.connectedCache.set(id, msg);
+    return conn;
+  }
+
+  /**
+   * Persist this connection's state onto the socket.
+   *
+   * Called after every mutation rather than on a timer: an eviction is not
+   * announced, so state that is not written by the end of the handler is state
+   * that can be lost.
+   */
+  persist(): void {
+    const state: NodeConnectionState = {
+      id: this.id,
+      geo: this.geo,
+      bytes: this.bytes.toJSON(),
+      connected: [...this.connectedCache],
+    };
+    this.socket.serializeAttachment(state);
   }
 
   /** Key that identifies one node: unique per (connection, envelope id). */
@@ -88,13 +130,6 @@ export class NodeConnection {
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
-  /** Queue work that must run after everything already queued. */
-  enqueue(work: () => Promise<void>): void {
-    this.pipeline = this.pipeline
-      .then(work)
-      .catch((err: unknown) => console.error("frame routing failed:", err));
-  }
-
   /** Close the socket with an application close code (see config/limits.ts). */
   close(code: number, reason: string): void {
     if (this.closed) return;
@@ -103,7 +138,7 @@ export class NodeConnection {
     try {
       this.socket.close(code, reason);
     } catch {
-      // Already gone; the close/error listener still runs the cleanup.
+      // Already gone; the close handler still runs the cleanup.
     }
   }
 
