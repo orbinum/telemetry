@@ -12,6 +12,8 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-08-26
+
 ### Fixed
 
 - **Two public endpoints had no tests, and two others asserted too little.**
@@ -1093,7 +1095,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.6.5...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.6.6...HEAD
+[0.6.6]: https://github.com/orbinum/telemetry/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/orbinum/telemetry/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/orbinum/telemetry/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/orbinum/telemetry/compare/v0.6.2...v0.6.3
