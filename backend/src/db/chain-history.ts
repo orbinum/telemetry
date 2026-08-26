@@ -11,22 +11,12 @@
  */
 
 import type { ChainSnapshot, Histogram } from "../domain/chain-snapshot";
+import type { ChainHistoryPoint } from "../ports/persistence";
 
 /** How long the 60s buckets are kept before the hourly rollup takes over. */
 export const RAW_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** One history point, as the API returns it. */
-export interface ChainHistoryPoint {
-  bucket: number;
-  nodeCount: number;
-  authorityCount: number;
-  staleCount: number;
-  bestHeight?: number;
-  finalizedHeight?: number;
-  finalityLag?: number;
-  averageBlockTimeMs?: number;
-  versions: Histogram;
-}
+export type { ChainHistoryPoint } from "../ports/persistence";
 
 /** Row shape of `chain_history`, straight from D1. */
 interface ChainHistoryRow {

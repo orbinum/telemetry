@@ -14,6 +14,7 @@
  */
 
 import type { NodeState } from "../domain/node-state";
+import type { NodeSession, NodeUptime } from "../ports/persistence";
 
 /**
  * How long sessions are kept. A year, where raw chain history keeps 30 days:
@@ -22,32 +23,7 @@ import type { NodeState } from "../domain/node-state";
  */
 export const SESSION_RETENTION_MS = 365 * 24 * 60 * 60 * 1000;
 
-/** A session, open if `disconnectedAt` is absent. */
-export interface NodeSession {
-  networkId: string;
-  genesis: string;
-  connectedAt: number;
-  disconnectedAt?: number;
-  name?: string;
-  version?: string;
-  implementation?: string;
-  isAuthority: boolean;
-  country?: string;
-  validator?: string;
-}
-
-/** Uptime for one node over a window, derived from its sessions. */
-export interface NodeUptime {
-  networkId: string;
-  name?: string;
-  version?: string;
-  isAuthority: boolean;
-  /** Milliseconds connected within the window. */
-  uptimeMs: number;
-  /** Sessions started in the window — a high count is a flapping node. */
-  sessions: number;
-  lastSeen: number;
-}
+export type { NodeSession, NodeUptime } from "../ports/persistence";
 
 interface SessionRow {
   network_id: string;

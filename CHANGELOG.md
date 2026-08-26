@@ -12,6 +12,31 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Changed
+
+- **The contract with the hosting platform is now written down.** `src/ports/`
+  holds the interfaces the code needs from wherever it runs: a clock, deferred
+  work, one pending alarm, the two repositories, the chain directory, sockets,
+  how a chain is reached, and what the edge provides. Nothing implements them
+  yet — this commit only names them, so the following ones can move code behind
+  a boundary that already exists.
+
+  The directory compiles with no ambient types at all, which is the property
+  worth having: it is now possible to read the whole platform contract in one
+  file per concern, without a Cloudflare type in sight.
+
+  The row DTOs (`ChainHistoryPoint`, `NodeSession`, `NodeUptime`) moved here
+  from `db/`, which re-exports them so no caller changed. They are plain data
+  describing what a repository returns, and leaving them in the module that
+  happens to speak D1 was what made the port depend on the driver.
+
+  One interface carries something no type can enforce: `transport.ts` states
+  the ordering contract the ingest path relies on — an adapter must not deliver
+  a frame for a socket while the previous frame's handler for that socket is
+  still pending. Cloudflare's runtime provides it, which is why the promise
+  chain that used to enforce it by hand could be deleted; a host whose socket
+  library does not await its handler has to put that chain back.
+
 ### Fixed
 
 - **The history and session SQL was never executed by a test.** The doubles in
