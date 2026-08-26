@@ -238,6 +238,10 @@ export class ChainState {
     return this.table.getById(id);
   }
 
+  getByKey(key: string): NodeState | undefined {
+    return this.table.get(key);
+  }
+
   list(): NodeEntry[] {
     return this.table.entries();
   }

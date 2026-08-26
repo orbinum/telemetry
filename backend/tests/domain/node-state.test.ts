@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ChainState } from "../../src/domain/chain-state";
 import { NodeState } from "../../src/domain/node-state";
 import type { SystemConnectedMessage, SystemIntervalMessage } from "../../src/protocol/node";
 import { peerId } from "../fixtures/peer-id";
@@ -133,5 +134,24 @@ describe("validator and hwbench", () => {
       diskSequentialWriteScore: 300,
     });
     expect(node.hwbench).toMatchObject({ cpuHashrateScore: 1000, diskSequentialWriteScore: 300 });
+  });
+});
+
+describe("validator address repeats", () => {
+  it("reports the same address on every authority_set, so callers can dedupe", () => {
+    // ChainDO skips the D1 write when the address is unchanged; that check
+    // reads the node's address *before* applying, so the value has to be
+    // stable across repeats for the dedupe to mean anything.
+    const chain = new ChainState(GENESIS);
+    chain.addNode("1:1", connected, undefined, 1000);
+
+    chain.applyMessage("1:1", { msg: "afg.authority_set", id: 1, authorityId: "addr-1" }, 1000);
+    expect(chain.getByKey("1:1")?.validator).toBe("addr-1");
+
+    chain.applyMessage("1:1", { msg: "afg.authority_set", id: 1, authorityId: "addr-1" }, 2000);
+    expect(chain.getByKey("1:1")?.validator).toBe("addr-1");
+
+    chain.applyMessage("1:1", { msg: "afg.authority_set", id: 1, authorityId: "addr-2" }, 3000);
+    expect(chain.getByKey("1:1")?.validator).toBe("addr-2");
   });
 });

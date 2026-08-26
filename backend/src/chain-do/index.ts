@@ -112,11 +112,15 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
 
   private applyOne(nodeKey: string, msg: NodeMessage, now: number): void {
     if (this.chain === undefined) return;
+    // Read before applying: `applyMessage` overwrites the address in place, so
+    // afterwards there is nothing left to compare a repeat against.
+    const previous =
+      msg.msg === "afg.authority_set" ? this.chain.getByKey(nodeKey)?.validator : undefined;
     const id = this.chain.applyMessage(nodeKey, msg, now);
     if (id === undefined) return;
 
     this.hub.markUpdated(id);
-    if (msg.msg === "afg.authority_set") {
+    if (msg.msg === "afg.authority_set" && msg.authorityId !== previous) {
       this.recordValidator(this.chain.getById(id), msg.authorityId);
     }
     // The one session-fixed field that lands after connect, so the next

@@ -14,6 +14,16 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Fixed
 
+- **A validator's address was written to D1 on every announcement.** Each
+  `afg.authority_set` fired a write, and a node re-announces the same address
+  for as long as it stays in the set — the last per-message database write left
+  in the ingest path. The write is now skipped when the address matches what
+  the node already reported, so only an actual change reaches D1.
+
+  The comparison reads the node's address before `applyMessage` runs, because
+  that call overwrites it in place: afterwards there is nothing left to compare
+  a repeat against.
+
 - **Ingest paid a full billed request per node frame.** The gateway called
   `nodeMessage` on a ChainDO once for every frame a node sent. Each RPC call is
   billed as its own request, and unlike the WebSocket frames feeding them it
