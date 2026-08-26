@@ -11,7 +11,7 @@
  */
 
 import type { Context } from "hono";
-import { readHistory, readHourlyHistory } from "../db/chain-history";
+import { D1HistoryRepository } from "../adapters/cloudflare/d1-history-repository";
 import { allowRequest, clientIp } from "../middleware/rate-limit";
 
 const GENESIS_RE = /^0x[0-9a-f]{64}$/;
@@ -49,18 +49,18 @@ export async function history(c: Context<{ Bindings: CloudflareBindings }>): Pro
     return Response.json({ error: "too many requests" }, { status: 429 });
   }
 
-  const db = c.env.DB;
-  if (db === undefined) {
+  if (c.env.DB === undefined) {
     return Response.json({ error: "history is not configured" }, { status: 503 });
   }
+  const history = new D1HistoryRepository(c.env.DB);
 
   const from = Date.now() - windowMs;
   const hourly = windowMs > HOURLY_THRESHOLD_MS;
 
   try {
     const points = hourly
-      ? await readHourlyHistory(db, genesisHash, from)
-      : await readHistory(db, genesisHash, from);
+      ? await history.readHourlyHistory(genesisHash, from)
+      : await history.readHistory(genesisHash, from);
     return Response.json({
       genesisHash,
       window: requested,

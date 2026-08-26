@@ -10,15 +10,15 @@
 import type { Context } from "hono";
 import { GATEWAY_PARTITIONS, gatewayPartitionStub } from "../services/do-registry";
 import type { ChainDirectoryEntry } from "../../../shared/protocol/feed";
-import type { ChainDirectoryRow } from "../gateway-do/chain-directory";
+import type { ChainListing } from "../ports/directory";
 
 export async function chains(c: Context<{ Bindings: CloudflareBindings }>): Promise<Response> {
   const partitions = await Promise.all(
     Array.from({ length: GATEWAY_PARTITIONS }, (_, i) =>
       gatewayPartitionStub(c.env, i)
         .fetch(new Request("https://do/chains"))
-        .then((res) => res.json<ChainDirectoryRow[]>())
-        .catch(() => [] as ChainDirectoryRow[]),
+        .then((res) => res.json<ChainListing[]>())
+        .catch(() => [] as ChainListing[]),
     ),
   );
 

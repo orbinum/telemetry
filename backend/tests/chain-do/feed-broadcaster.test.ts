@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { FeedBroadcaster } from "../../src/chain-do/feed-broadcaster";
 import { ChainState } from "../../src/domain/chain-state";
 import { FeedHub } from "../../src/feed/hub";
+import type { OutboundSocket } from "../../src/ports/transport";
 import type { FeedMessage, FeedNode } from "../../../shared/protocol/feed";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
 import { peerId } from "../fixtures/peer-id";
@@ -32,11 +33,13 @@ function connected(name: string): SystemConnectedMessage {
 }
 
 /** A socket that only records what was written to it. */
-function fakeSocket(): { sent: FeedMessage[]; socket: WebSocket } {
+function fakeSocket(): { sent: FeedMessage[]; socket: OutboundSocket } {
   const sent: FeedMessage[] = [];
-  const socket = {
+  // No cast: the port is narrow enough that an object literal satisfies it.
+  const socket: OutboundSocket = {
     send: (frame: string) => sent.push(JSON.parse(frame) as FeedMessage),
-  } as unknown as WebSocket;
+    close: () => {},
+  };
   return { sent, socket };
 }
 

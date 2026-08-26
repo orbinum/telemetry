@@ -1,5 +1,6 @@
 /**
- * Chain directory — the only place that touches the gateway's SQLite.
+ * `ChainDirectoryStore` over the Durable Object's own SQLite — the only place
+ * that touches the gateway's storage.
  *
  * Every chain a gateway has seen is recorded here so `GET /chains` can
  * populate the UI's picker even right after a deploy, when the in-memory
@@ -13,18 +14,23 @@
  * current as the chain they are actually working on.
  */
 
+import type { ChainDirectoryStore, ChainListing } from "../../ports/directory";
+
 /** How long a chain stays listed after its last activity. */
 export const CHAIN_TTL_MS = 10 * 60 * 1000;
 
-/** Index signature required by SqlStorage's row typing. */
-export interface ChainDirectoryRow extends Record<string, SqlStorageValue> {
+/**
+ * A row as SqlStorage types it. Private to this adapter: an index signature
+ * over `SqlStorageValue` is a fact about the driver, and callers get the plain
+ * `ChainListing` instead.
+ */
+interface ChainDirectoryRow extends Record<string, SqlStorageValue> {
   genesis: string;
   label: string;
-  /** Wall-clock ms of the last activity seen for this chain. */
   updated: number;
 }
 
-export class ChainDirectory {
+export class SqlChainDirectory implements ChainDirectoryStore {
   private readonly sql: SqlStorage;
 
   constructor(sql: SqlStorage) {
@@ -58,7 +64,7 @@ export class ChainDirectory {
   }
 
   /** Chains active within the TTL, most recently active first. */
-  list(now: number, ttlMs: number = CHAIN_TTL_MS): ChainDirectoryRow[] {
+  list(now: number, ttlMs: number = CHAIN_TTL_MS): ChainListing[] {
     return this.sql
       .exec<ChainDirectoryRow>(
         "SELECT genesis, label, updated FROM chains WHERE updated >= ? ORDER BY updated DESC",

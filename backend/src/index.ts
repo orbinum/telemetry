@@ -8,8 +8,9 @@
  */
 
 import { Hono } from "hono";
-import { pruneHistory } from "./db/chain-history";
-import { SESSION_RETENTION_MS, pruneSessions } from "./db/node-sessions";
+import { D1HistoryRepository } from "./adapters/cloudflare/d1-history-repository";
+import { D1SessionRepository } from "./adapters/cloudflare/d1-session-repository";
+import { SESSION_RETENTION_MS } from "./config/limits";
 import { corsMiddleware } from "./middleware/cors";
 import { chains } from "./routes/chains";
 import { feed } from "./routes/feed";
@@ -42,9 +43,9 @@ export default {
   async scheduled(_event: ScheduledController, env: CloudflareBindings): Promise<void> {
     if (env.DB === undefined) return;
     const now = Date.now();
-    await pruneHistory(env.DB, now);
+    await new D1HistoryRepository(env.DB).prune(now);
     // Sessions outlive the 60s buckets: one row per connection means a year of
     // them is smaller than a week of raw history.
-    await pruneSessions(env.DB, now, SESSION_RETENTION_MS);
+    await new D1SessionRepository(env.DB).prune(now, SESSION_RETENTION_MS);
   },
 } satisfies ExportedHandler<CloudflareBindings>;
