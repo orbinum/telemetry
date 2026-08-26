@@ -12,6 +12,25 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Fixed
+
+- **A brief outage made every open tab reconnect in lockstep.** The feed client
+  retried on a fixed 2 s delay with no jitter and no ceiling, so the moment a
+  chain's Durable Object blipped, every browser watching it came back at the
+  same instant — and kept doing so, twice a minute each, for as long as the
+  outage lasted. Every attempt costs a billed request plus a full init snapshot,
+  which at 500 nodes is ~338 kB, so the retries were most expensive exactly when
+  the object could least afford them.
+
+  Reconnects now back off exponentially from 2 s to 30 s with ±25% jitter. The
+  jitter is the half that breaks the herd: without it clients stay
+  synchronized, only slower.
+
+  The backoff resets on the first `init` frame rather than on `onopen`. A
+  Durable Object that accepts a socket and then dies still fires `onopen`, so
+  resetting there would pin the delay at 2 s through precisely the outage the
+  backoff exists for. An `init` proves the object is actually serving.
+
 ## [0.6.0] - 2026-08-21
 
 ### Added

@@ -7,6 +7,7 @@
  * ever.
  */
 
+import { ReconnectBackoff } from "./reconnect-backoff";
 import { FEED_VERSION, parseFeedMessage } from "../../../shared/protocol/feed";
 import type { FeedChain, FeedNode, FeedNodeSeries } from "../../../shared/protocol/feed";
 
@@ -24,8 +25,6 @@ export interface FeedSnapshot {
 }
 
 type Listener = (snapshot: FeedSnapshot) => void;
-
-const RECONNECT_DELAY_MS = 2000;
 
 /**
  * Detects a half-open socket — dropped without a FIN, so `close` never fires
@@ -50,6 +49,7 @@ export class FeedClient {
   private dirty = false;
   private frame?: number;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private readonly backoff = new ReconnectBackoff();
   private closed = false;
   private listeners = new Set<Listener>();
   private clockOffset = 0;
@@ -73,6 +73,7 @@ export class FeedClient {
 
   connect(): void {
     this.closed = false;
+    this.backoff.reset();
     this.open();
   }
 
@@ -150,7 +151,7 @@ export class FeedClient {
     if (this.closed) return;
     this.setStatus("reconnecting");
     clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(() => this.open(), RECONNECT_DELAY_MS);
+    this.reconnectTimer = setTimeout(() => this.open(), this.backoff.next());
   }
 
   private setStatus(status: FeedStatus): void {
@@ -178,6 +179,11 @@ export class FeedClient {
         }
         // Per init, so a reconnect re-syncs a clock that drifted during sleep.
         this.clockOffset = msg.serverTime - Date.now();
+        // Here rather than in `onopen`: a DO that accepts the socket and then
+        // dies still ran `onopen`, so resetting there would keep the backoff
+        // pinned at the base delay through exactly the outage it exists for.
+        // An init frame proves the object is actually serving.
+        this.backoff.reset();
         // A fresh init after a reconnect replaces the world: the first chunk
         // clears, later chunks accumulate.
         if (this.isFirstInitChunk) {
