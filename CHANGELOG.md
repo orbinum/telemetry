@@ -12,6 +12,28 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Fixed
+
+- **The history and session SQL was never executed by a test.** The doubles in
+  `tests/db` record the statements each function builds and assert on their
+  shape; nothing ever handed them to a parser, so a typo in the thirty-line CTE
+  behind `readHourlyHistory` would pass `pnpm test` and fail in production. The
+  file's own header admitted it and deferred the check to a manual step.
+
+  Those statements now also run against real SQLite, through a `D1Database`
+  double backed by `node:sqlite` and the schema in `migrations/`. Reading the
+  migrations from disk rather than restating the DDL means a migration the code
+  has not caught up with fails the suite instead of passing it.
+
+  The recording doubles stay. They pin intent — that a write is an upsert on
+  the bucket key, that a departure goes out as one batch — which executing the
+  SQL cannot show. The new tests pin effect.
+
+  Two behaviours had no coverage at all and now do: that `readHourlyHistory`
+  aggregates raw minute buckets exactly as `pruneHistory` rolls them up, a
+  contract that previously lived only in a comment, and that `pruneHistory` is
+  one transaction, so a rollup can never commit without its prune.
+
 ## [0.6.2] - 2026-08-26
 
 ### Fixed
