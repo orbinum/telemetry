@@ -12,6 +12,30 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sessions stayed open forever when a ChainDO died without closing them.** A
+  session is closed when its node leaves, but nothing runs when the object
+  holding it is evicted, redeployed or crashes. `readUptime` treats an open
+  session as still running, so a node that disconnected days ago kept accruing
+  uptime it never had — production had 1.720 such rows spread evenly across
+  every day since 17 August, inflating the figures by ~6.600 node-days.
+
+  A ChainDO now sweeps them on its first `system.connected` after starting:
+  anything still open for that chain, other than the nodes it currently holds,
+  is a leftover from an instance that is gone.
+
+  Each leftover is closed at the moment its node next reconnected, never at
+  "now" — one node cannot hold two sessions at once, so the following
+  `connected_at` is the latest instant the old session can still have been
+  alive. Only a leftover with no later session falls back to the sweeping
+  object's start time, the earliest moment it can prove the row was stale.
+
+  The sweep runs on the first connect rather than in the constructor: a Durable
+  Object is constructed for any reason at all, including requests that touch no
+  sessions, and this is a write. It is best-effort like the other session
+  writes, since a failed sweep costs an uptime figure, not the feed.
+
 ## [0.6.1] - 2026-08-26
 
 ### Fixed

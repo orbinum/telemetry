@@ -24,6 +24,7 @@ import { DurableObject } from "cloudflare:workers";
 import { FeedBroadcaster } from "./feed-broadcaster";
 import { writeSnapshot } from "../db/chain-history";
 import {
+  closeOrphanSessions,
   closeSessions,
   openSession,
   readLastValidatorAddress,
@@ -48,6 +49,14 @@ const KEEPALIVE = new WebSocketRequestResponsePair("ping", "pong");
 
 export class ChainDO extends DurableObject<CloudflareBindings> {
   private chain?: ChainState;
+
+  /**
+   * When this instance started. Sessions still open from before it are the
+   * work of an object that died without closing them.
+   */
+  private readonly startedAt = Date.now();
+  /** Whether the one-shot orphan sweep has already run for this instance. */
+  private sweptOrphans = false;
   private readonly hub = new FeedHub();
   private readonly feed: FeedBroadcaster;
 
@@ -71,6 +80,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     this.feed.schedule(this.chain);
     this.recordSessionStart(this.chain.getById(id));
     this.restoreValidator(id);
+    this.sweepOrphanSessions();
     await this.armReaper();
   }
 
@@ -158,6 +168,41 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     if (this.chain.nodeCount > 0) {
       await this.ctx.storage.setAlarm(now + REAPER_INTERVAL_MS);
     }
+  }
+
+  /**
+   * Close the sessions a previous instance of this object left open.
+   *
+   * Runs once, on the first connect after a start. An object that is evicted
+   * or redeployed never reaches `connectionClosed`, so its sessions stay open
+   * and keep accruing uptime for nodes that left long ago.
+   *
+   * Deliberately not in the constructor: a Durable Object is constructed for
+   * any reason at all, including a request that turns out to touch no
+   * sessions, and the sweep is a write. The first `system.connected` is the
+   * moment the object is genuinely taking over a chain.
+   *
+   * Best-effort like the other session writes — a failed sweep costs an
+   * inflated uptime figure, not the feed.
+   */
+  private sweepOrphanSessions(): void {
+    const db = this.env.DB;
+    if (db === undefined || this.sweptOrphans || this.chain === undefined) return;
+    this.sweptOrphans = true;
+
+    const genesisHash = this.chain.genesisHash;
+    // Live rows are identified by connected_at, which this object knows for
+    // every node it currently holds.
+    const live = this.chain.list().map(({ node }) => node.connectedAt);
+    this.ctx.waitUntil(
+      closeOrphanSessions(db, genesisHash, live, this.startedAt)
+        .then((closed) => {
+          if (closed > 0) console.log(`closed ${closed} orphan sessions for ${genesisHash}`);
+        })
+        .catch((error: unknown) => {
+          console.error("orphan session sweep failed", error);
+        }),
+    );
   }
 
   /**

@@ -200,6 +200,58 @@ export async function closeSessions(
 }
 
 /**
+ * Close sessions this chain left open, keeping one open session per node.
+ *
+ * A session is closed when its node leaves, but nothing runs when the object
+ * holding it dies outright — an eviction, a redeploy, a crash. The row stays
+ * open forever, and since `readUptime` treats an open session as still running
+ * (`COALESCE(disconnected_at, now)`), a node that disconnected days ago keeps
+ * accruing uptime it never had.
+ *
+ * Called on the first connect after a ChainDO starts, with the nodes it now
+ * considers live. Everything else open for this chain is a leftover.
+ *
+ * Each leftover is closed at the moment its node next reconnected, never at
+ * `now`: one node cannot hold two sessions at once, so the following
+ * `connected_at` is the latest instant the old one can still have been alive.
+ * A leftover with no later session has no such evidence and is closed at
+ * `fallback` — the time this object started, the earliest moment it can prove
+ * the session was already stale.
+ */
+export async function closeOrphanSessions(
+  db: D1Database,
+  genesis: string,
+  liveConnectedAt: number[],
+  fallback: number,
+): Promise<number> {
+  // `connected_at` is part of the primary key, so it identifies the live rows
+  // on its own within one chain. Inlined rather than bound because D1 caps the
+  // number of parameters, and this list grows with the chain.
+  const keep =
+    liveConnectedAt.length === 0
+      ? ""
+      : `AND s.connected_at NOT IN (${liveConnectedAt.map((at) => Number(at)).join(",")})`;
+
+  const { meta } = await db
+    .prepare(
+      `UPDATE node_sessions AS s
+          SET disconnected_at = COALESCE(
+                (SELECT MIN(n.connected_at) FROM node_sessions n
+                  WHERE n.network_id = s.network_id AND n.genesis = s.genesis
+                    AND n.connected_at > s.connected_at),
+                ?2)
+        WHERE s.genesis = ?1
+          AND s.disconnected_at IS NULL
+          AND s.connected_at < ?2
+          ${keep}`,
+    )
+    .bind(genesis, fallback)
+    .run();
+
+  return meta.changes ?? 0;
+}
+
+/**
  * Uptime per node over a window.
  *
  * A session that started before the window or has not ended yet is clamped to
