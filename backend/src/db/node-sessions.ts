@@ -16,8 +16,6 @@
 import type { NodeState } from "../domain/node-state";
 import type { NodeSession, NodeUptime } from "../ports/persistence";
 
-export { SESSION_RETENTION_MS } from "../config/limits";
-
 export type { NodeSession, NodeUptime } from "../ports/persistence";
 
 interface SessionRow {

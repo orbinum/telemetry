@@ -1,74 +1,80 @@
 /**
- * ChainDO — one instance per chain (`idFromName(genesisHash)`), owner of that
- * chain's state and of its browser feed sockets.
+ * ChainService — one chain's live state, its history, and what browsers see.
  *
- * Ingest arrives as RPC from the GatewayDO — no node sockets here. Browser
- * feeds connect via `/feed` using the hibernatable WebSocket API, because
- * they are mostly idle (plan §4.3). The ingest path itself never hibernates:
- * the live state is in memory and nodes reporting every ~5s would keep the
- * object awake anyway.
+ * Everything a chain does that is not tied to how it is hosted: applying node
+ * messages, reaping the ones that went silent, deciding what a browser feed
+ * receives, and persisting the parts a restart cannot rebuild.
  *
  * Responsibilities are split deliberately:
  *   - `ChainState` owns the domain (nodes, aggregates, propagation)
  *   - `FeedHub` owns what changed since the last flush
  *   - `FeedBroadcaster` owns snapshots, batching and fanout
  *   - the history and session repositories own long-lived storage
- *   - this class owns RPC, sockets and the reaper alarm
+ *   - this class owns the ingest calls, the feed, and the reaper
  *
- * The reaper alarm doubles as the history writer: it already runs once a
- * minute for exactly as long as the chain has nodes, which is the cadence and
- * the lifecycle a history row wants.
+ * The reaper doubles as the history writer: it already runs once a minute for
+ * exactly as long as the chain has nodes, which is the cadence and the
+ * lifecycle a history row wants.
  */
 
-import { DurableObject } from "cloudflare:workers";
 import { FeedBroadcaster } from "./feed-broadcaster";
-import { D1HistoryRepository } from "../adapters/cloudflare/d1-history-repository";
-import { D1SessionRepository } from "../adapters/cloudflare/d1-session-repository";
 import { ChainState, NODE_TIMEOUT_MS } from "../domain/chain-state";
 import { FeedHub } from "../feed/hub";
 import type { ChainSnapshot } from "../domain/chain-snapshot";
 import type { NodeGeo, NodeState } from "../domain/node-state";
 import type { NodeEntry } from "../domain/node-table";
 import type { HistoryRepository, SessionRepository } from "../ports/persistence";
+import type { Alarms, Clock, Deferred } from "../ports/runtime";
+import type { OutboundSocket, SocketSource } from "../ports/transport";
 import type { NodeMessage, SystemConnectedMessage } from "../protocol/node";
 
 /** Reaper cadence: sweep expired nodes once a minute while any are alive. */
-const REAPER_INTERVAL_MS = 60_000;
+export const REAPER_INTERVAL_MS = 60_000;
 
-/**
- * Keepalive for browser feeds: lets a client notice a socket dropped without a
- * FIN, which never fires `close` and leaves the page reporting stale data as
- * live. Answered by the runtime, so a hibernating DO stays hibernating.
- */
-const KEEPALIVE = new WebSocketRequestResponsePair("ping", "pong");
+export interface ChainServiceDeps {
+  clock: Clock;
+  deferred: Deferred;
+  alarms: Alarms;
+  /** The live feed sockets, read at each broadcast rather than captured. */
+  sockets: SocketSource;
+  /** Absent where no storage is configured; history and sessions stop. */
+  history?: HistoryRepository;
+  sessions?: SessionRepository;
+}
 
-export class ChainDO extends DurableObject<CloudflareBindings> {
+export class ChainService {
   private chain?: ChainState;
 
   /**
-   * Storage, or undefined where the binding is absent (dev, tests). Built once
-   * rather than per write: the check every caller used to repeat is now the
-   * single question of whether this service has somewhere to persist to.
+   * Storage, or undefined where none is configured (dev, tests). Held rather
+   * than looked up per write: the question every best-effort write used to
+   * repeat is asked once, and the answer is a field that is either there or not.
    */
   private readonly history?: HistoryRepository;
   private readonly sessions?: SessionRepository;
 
   /**
    * When this instance started. Sessions still open from before it are the
-   * work of an object that died without closing them.
+   * work of an instance that died without closing them.
    */
-  private readonly startedAt = Date.now();
+  private readonly startedAt: number;
   /** Whether the one-shot orphan sweep has already run for this instance. */
   private sweptOrphans = false;
   private readonly hub = new FeedHub();
   private readonly feed: FeedBroadcaster;
 
-  constructor(ctx: DurableObjectState, env: CloudflareBindings) {
-    super(ctx, env);
-    this.history = env.DB === undefined ? undefined : new D1HistoryRepository(env.DB);
-    this.sessions = env.DB === undefined ? undefined : new D1SessionRepository(env.DB);
-    this.feed = new FeedBroadcaster(this.hub, () => this.ctx.getWebSockets());
-    this.ctx.setWebSocketAutoResponse(KEEPALIVE);
+  private readonly now: Clock;
+  private readonly deferred: Deferred;
+  private readonly alarms: Alarms;
+
+  constructor(deps: ChainServiceDeps) {
+    this.now = deps.clock;
+    this.deferred = deps.deferred;
+    this.alarms = deps.alarms;
+    this.history = deps.history;
+    this.sessions = deps.sessions;
+    this.startedAt = deps.clock();
+    this.feed = new FeedBroadcaster(this.hub, deps.sockets);
   }
 
   // ─── Ingest RPC (called by GatewayDO) ──────────────────────────────────────
@@ -79,7 +85,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     geo: NodeGeo | undefined,
   ): Promise<void> {
     this.chain ??= new ChainState(msg.genesisHash);
-    const id = this.chain.addNode(nodeKey, msg, geo, Date.now());
+    const id = this.chain.addNode(nodeKey, msg, geo, this.now());
     this.hub.markUpdated(id);
     this.hub.markChainChanged();
     this.feed.schedule(this.chain);
@@ -106,7 +112,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
   async nodeMessages(batch: Array<{ nodeKey: string; msg: NodeMessage }>): Promise<string[]> {
     if (this.chain === undefined) return batch.map((entry) => entry.nodeKey);
 
-    const now = Date.now();
+    const now = this.now();
     const unknown: string[] = [];
     for (const { nodeKey, msg } of batch) {
       if (!this.chain.hasNode(nodeKey)) {
@@ -148,14 +154,14 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     const departed = this.chain.takeConnection(nodeKeyPrefix);
     this.hub.markRemoved(departed.map((entry) => entry.id));
     this.feed.schedule(this.chain);
-    this.recordSessionEnd(departed, Date.now());
+    this.recordSessionEnd(departed, this.now());
   }
 
   // ─── Reaper ────────────────────────────────────────────────────────────────
 
-  override async alarm(): Promise<void> {
+  async alarm(): Promise<void> {
     if (this.chain === undefined) return;
-    const now = Date.now();
+    const now = this.now();
     const reaped = this.chain.takeExpired(now, NODE_TIMEOUT_MS);
     this.hub.markRemoved(reaped.map((entry) => entry.id));
     // After the reap, so departed nodes are not swept. The only sweep a chain
@@ -171,7 +177,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     // Keep sweeping while the chain has nodes; a dead chain lets the DO idle,
     // which also stops the history for a chain nobody reports to.
     if (this.chain.nodeCount > 0) {
-      await this.ctx.storage.setAlarm(now + REAPER_INTERVAL_MS);
+      await this.alarms.arm(now + REAPER_INTERVAL_MS);
     }
   }
 
@@ -199,7 +205,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     // Live rows are identified by connected_at, which this object knows for
     // every node it currently holds.
     const live = this.chain.list().map(({ node }) => node.connectedAt);
-    this.ctx.waitUntil(
+    this.deferred.run(
       sessions
         .closeOrphans(genesisHash, live, this.startedAt)
         .then((closed) => {
@@ -222,7 +228,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
   private recordHistory(snapshot: ChainSnapshot): void {
     const history = this.history;
     if (history === undefined) return; // no binding (dev, tests) → no history
-    this.ctx.waitUntil(
+    this.deferred.run(
       history.writeSnapshot(snapshot).catch((error: unknown) => {
         console.error("chain history write failed", error);
       }),
@@ -238,7 +244,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     if (sessions === undefined || node === undefined || this.chain === undefined) return;
     const { networkId } = node.details;
     if (networkId === undefined) return;
-    this.ctx.waitUntil(
+    this.deferred.run(
       sessions
         .recordValidatorAddress(this.chain.genesisHash, networkId, node.connectedAt, address)
         .catch((error: unknown) => {
@@ -267,7 +273,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     if (node === undefined || networkId === undefined || node.validator !== undefined) return;
 
     const genesisHash = this.chain.genesisHash;
-    this.ctx.waitUntil(
+    this.deferred.run(
       sessions
         .readLastValidatorAddress(genesisHash, networkId)
         .then((address) => {
@@ -299,7 +305,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
   private recordSessionStart(node: NodeState | undefined): void {
     const sessions = this.sessions;
     if (sessions === undefined || node === undefined || this.chain === undefined) return;
-    this.ctx.waitUntil(
+    this.deferred.run(
       sessions.open(this.chain.genesisHash, node).catch((error: unknown) => {
         console.error("session open failed", error);
       }),
@@ -321,7 +327,7 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
       networkId: entry.node.details.networkId,
       connectedAt: entry.node.connectedAt,
     }));
-    this.ctx.waitUntil(
+    this.deferred.run(
       sessions.close(this.chain.genesisHash, departures, now).catch((error: unknown) => {
         console.error("session close failed", error);
       }),
@@ -329,33 +335,15 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
   }
 
   private async armReaper(): Promise<void> {
-    if ((await this.ctx.storage.getAlarm()) === null) {
-      await this.ctx.storage.setAlarm(Date.now() + REAPER_INTERVAL_MS);
+    if ((await this.alarms.pending()) === null) {
+      await this.alarms.arm(this.now() + REAPER_INTERVAL_MS);
     }
   }
 
   // ─── Browser feed ──────────────────────────────────────────────────────────
 
-  override async fetch(request: Request): Promise<Response> {
-    if (new URL(request.url).pathname !== "/feed") {
-      return new Response("not found", { status: 404 });
-    }
-    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
-      return new Response("expected websocket", { status: 426 });
-    }
-
-    const pair = new WebSocketPair();
-    const [client, server] = [pair[0], pair[1]];
-    // Hibernatable accept: feed sockets survive eviction without billing for
-    // idle time, and the socket list lives in ctx.getWebSockets().
-    this.ctx.acceptWebSocket(server);
-    this.feed.sendSnapshot(server, this.chain, Date.now());
-    return new Response(null, { status: 101, webSocket: client });
+  /** Send a newly connected browser everything, then leave it to the batches. */
+  greet(socket: OutboundSocket): void {
+    this.feed.sendSnapshot(socket, this.chain, this.now());
   }
-
-  // Feed sockets carry no browser→server data: "ping" is auto-answered by the
-  // runtime before reaching here, and anything else is ignored.
-  override async webSocketMessage(): Promise<void> {}
-  override async webSocketClose(): Promise<void> {}
-  override async webSocketError(): Promise<void> {}
 }

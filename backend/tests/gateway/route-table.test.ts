@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RouteTable } from "../../src/gateway-do/route-table";
+import { RouteTable } from "../../src/gateway/route-table";
 
 const CHAIN_A = "0x" + "aa".repeat(32);
 const CHAIN_B = "0x" + "bb".repeat(32);

@@ -13,8 +13,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { NodeConnection } from "../../src/gateway-do/connection";
-import type { NodeConnectionState } from "../../src/gateway-do/connection";
+import { NodeConnection } from "../../src/gateway/connection";
+import type { NodeConnectionState } from "../../src/gateway/connection";
 import type { OutboundSocket, SocketAttachment } from "../../src/ports/transport";
 import { BYTE_BUDGET_BYTES } from "../../src/config/limits";
 import { peerId } from "../fixtures/peer-id";

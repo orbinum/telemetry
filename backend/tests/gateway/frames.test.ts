@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { frameToText } from "../../src/gateway-do/frames";
+import { frameToText } from "../../src/gateway/frames";
 
 const JSON_FRAME = '{"id":1}';
 

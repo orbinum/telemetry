@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { GEO_HEADER } from "../../src/middleware/geo";
+import { GEO_HEADER } from "../../src/gateway/geo-header";
 import { submit } from "../../src/routes/submit";
+import { durableObjectRegistry } from "../../src/adapters/cloudflare/chain-registry";
+import { cloudflareGeo } from "../../src/adapters/cloudflare/geo";
+import type { AppDeps } from "../../src/adapters/cloudflare/composition";
 
-/** Minimal Hono-context stand-in: the handler only touches req.raw and env. */
+/** Minimal Hono-context stand-in: the handler only reads req.raw and its deps. */
 function fakeContext(request: Request) {
   const doFetch = vi.fn(async (_req: Request) => new Response("do-response"));
   const env = {
@@ -11,8 +14,15 @@ function fakeContext(request: Request) {
       get: vi.fn(() => ({ fetch: doFetch })),
     },
   } as unknown as CloudflareBindings;
+
+  const limiter = { allow: async () => true };
+  const deps: AppDeps = {
+    registry: durableObjectRegistry(env),
+    geo: cloudflareGeo,
+    limiters: { submit: limiter, feed: limiter, history: limiter },
+  };
   return {
-    c: { req: { raw: request }, env } as Parameters<typeof submit>[0],
+    c: { req: { raw: request }, get: () => deps } as unknown as Parameters<typeof submit>[0],
     doFetch,
   };
 }

@@ -10,7 +10,9 @@
 import { Hono } from "hono";
 import { D1HistoryRepository } from "./adapters/cloudflare/d1-history-repository";
 import { D1SessionRepository } from "./adapters/cloudflare/d1-session-repository";
+import { buildDeps } from "./adapters/cloudflare/composition";
 import { SESSION_RETENTION_MS } from "./config/limits";
+import type { AppEnv } from "./app-env";
 import { corsMiddleware } from "./middleware/cors";
 import { chains } from "./routes/chains";
 import { feed } from "./routes/feed";
@@ -18,10 +20,16 @@ import { history } from "./routes/history";
 import { submit } from "./routes/submit";
 import { uptime } from "./routes/uptime";
 
-export { ChainDO } from "./chain-do";
-export { GatewayDO } from "./gateway-do";
+export { ChainDO } from "./adapters/cloudflare/chain-do";
+export { GatewayDO } from "./adapters/cloudflare/gateway-do";
 
-const app = new Hono<{ Bindings: CloudflareBindings }>();
+const app = new Hono<AppEnv>();
+
+// Bindings become ports once per request, so no handler below reads `c.env`.
+app.use("*", async (c, next) => {
+  c.set("deps", buildDeps(c.env));
+  await next();
+});
 
 app.get("/submit", submit);
 app.get("/submit/", submit);

@@ -16,7 +16,7 @@ import { ChainState } from "../../src/domain/chain-state";
 import { MeanList } from "../../src/domain/mean-list";
 import { NodeTable } from "../../src/domain/node-table";
 import { RollingTotal } from "../../src/domain/rolling-total";
-import { RouteTable } from "../../src/gateway-do/route-table";
+import { RouteTable } from "../../src/gateway/route-table";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
 import { peerId } from "../fixtures/peer-id";
 

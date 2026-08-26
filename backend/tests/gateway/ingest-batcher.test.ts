@@ -8,9 +8,9 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { IngestBatcher } from "../../src/gateway-do/ingest-batcher";
+import { IngestBatcher } from "../../src/gateway/ingest-batcher";
 import { peerId } from "../fixtures/peer-id";
-import type { NodeConnection } from "../../src/gateway-do/connection";
+import type { NodeConnection } from "../../src/gateway/connection";
 import type { NodeMessage, SystemConnectedMessage } from "../../src/protocol/node";
 
 const CHAIN_A = "0x" + "aa".repeat(32);

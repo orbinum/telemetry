@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FeedBroadcaster } from "../../src/chain-do/feed-broadcaster";
+import { FeedBroadcaster } from "../../src/chain/feed-broadcaster";
 import { ChainState } from "../../src/domain/chain-state";
 import { FeedHub } from "../../src/feed/hub";
 import type { OutboundSocket } from "../../src/ports/transport";

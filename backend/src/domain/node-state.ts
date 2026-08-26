@@ -17,7 +17,7 @@ import type {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-/** Approximate node location, captured from `request.cf` at upgrade time. */
+/** Approximate node location, captured from the edge at upgrade time. */
 export interface NodeGeo {
   city?: string;
   country?: string;

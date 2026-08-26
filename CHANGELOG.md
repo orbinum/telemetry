@@ -12,6 +12,101 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-26
+
+### Fixed
+
+- **A security test asserted nothing.** "Partitions by the edge-provided IP,
+  not by a client-supplied header" ended in
+  `expect(other).not.toBe(resolved)` — a reference comparison between two
+  arrays from separate setups, true unconditionally. The test passed whether
+  the gateway keyed on `CF-Connecting-IP` or on the `X-Forwarded-For` a client
+  can forge, which is the exact attack in its own title.
+
+  It now sends the same edge address twice with different forged headers and
+  asserts the partition does not move, plus a counterpart asserting different
+  addresses do land on different partitions — without which pinning every
+  client to one partition would also pass. Verified by making the resolver
+  trust `X-Forwarded-For`: the client relocates and the test fails.
+
+  The weak assertion predates this refactor.
+
+### Changed
+
+- **A chain's orchestration is testable.** `ChainDO` was 361 lines of a class
+  that cannot be constructed outside a Durable Object, so the ordering its
+  comments describe — reap, then sweep, then close sessions, then write the
+  history row — was never checked by anything. It is now a 96-line shell over a
+  `ChainService` that takes a clock, deferred work and an alarm as ports and
+  names no platform type at all.
+
+  The reaper's order is pinned by tests rather than prose. Closing the reaped
+  sessions before writing the history row is what makes the row describe the
+  nodes still present; inverting the two produces plausible output and wrong
+  history, and now fails the suite.
+
+  So is the race in the validator restore, which had none: an address read from
+  storage must lose to one that arrived live while that read was in flight. The
+  re-check that decides it runs inside a deferred callback, which is precisely
+  the kind of timing a test could not previously reach.
+
+- **No route reads the environment any more.** The five handlers took a
+  `CloudflareBindings` and pulled a limiter, a database and a Durable Object
+  namespace out of it; they now receive ports, put there once per request by a
+  single composition root. `c.env` appears nowhere under `routes/`.
+
+  That root is the one file which knows a rate limiter is a binding and a chain
+  is a Durable Object. Hosting this service elsewhere means writing another one
+  of these, rather than editing five handlers that each learned the platform
+  independently.
+
+  Geolocation split along the line it always had: extracting a location from
+  what the edge attached is the adapter's job, while the header that carries it
+  to the object holding the socket is the wire format between two halves of the
+  same deployment and stays with them. The extraction gained tests it never had
+  — those fields arrive typed as unknown, and a coordinate that is not a number
+  must leave the column empty rather than plot a node at the equator.
+
+  The route security tests keep their teeth: they build the real registry over
+  fake namespaces rather than faking the registry, because which partition a
+  client lands on is derived from its address, and replacing that would have
+  faked away the isolation being asserted.
+
+- **The gateway's socket lifecycle is testable, and no directory is named
+  after a platform any more.** `GatewayDO` is now an 89-line shell over a
+  `GatewayService` that names no Cloudflare type. `gateway-do/` and `chain-do/`
+  became `gateway/` and `chain/`; the two shells moved in with the rest of the
+  adapter, which is what they always were.
+
+  The ordering the ingest path depends on is finally pinned by tests. A node
+  must be introduced to its chain before its own messages are applied, and its
+  last buffered messages must reach the chain before it is told the node left —
+  reverse the second and the node is resurrected until the reaper sweeps it a
+  minute later, which is exactly the kind of failure that reads as correct.
+
+  Both are enforced by flushes rather than by any type, which is why they now
+  have tests that fail when the calls are reordered.
+
+- **The routes no longer reach into the Cloudflare adapter.** `GET /chains`
+  imported `GATEWAY_PARTITIONS` to drive its fan-in loop, so a route knew both
+  that gateways are partitioned and how many there are. `ChainRegistry` now
+  answers `gateways()` with the collection; how sockets are spread is the
+  host's business, and a single-process host has one gateway rather than a
+  fake index.
+
+- **The eviction path that renumbers connections has tests.** `highestConnId`
+  had none: every test started with no sockets, so the resume-past-the-highest
+  logic never ran. It guards against a counter restarting at 1 and handing a
+  new socket the id of one still streaming — which silently replaces the older
+  node, since both build the same node keys. Now covered, including ids from
+  another gateway and ids that cannot be parsed.
+
+- **The ports' independence is checked rather than asserted.** `pnpm typecheck`
+  now also compiles `src/ports/` under `tsconfig.ports.json`, which supplies no
+  ambient types at all. An import that reaches a Cloudflare type fails the
+  build instead of quietly re-coupling the boundary. Confirmed by putting a
+  `D1Database` in a port: the build breaks.
+
 ## [0.6.3] - 2026-08-26
 
 ### Fixed
@@ -931,7 +1026,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.6.3...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.6.4...HEAD
+[0.6.4]: https://github.com/orbinum/telemetry/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/orbinum/telemetry/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/orbinum/telemetry/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/orbinum/telemetry/compare/v0.6.0...v0.6.1
