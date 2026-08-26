@@ -34,21 +34,44 @@ node ──ws──> Worker ──> GatewayDO ──rpc──> ChainDO ──ws�
                          limits)            feed fanout)
 ```
 
-| Directory     | Holds                                                               |
-| ------------- | ------------------------------------------------------------------- |
-| `protocol/`   | Parser for the node wire format. Pure; one file per message variant |
-| `domain/`     | Node and chain state, propagation, bounded series. Pure, no I/O     |
-| `gateway-do/` | Node sockets, ingest policy, chain directory                        |
-| `chain-do/`   | Per-chain state owner, feed batching and fanout                     |
-| `feed/`       | Domain → wire serialization for browsers                            |
-| `db/`         | The D1 history tables — the only place that writes SQL              |
-| `routes/`     | HTTP handlers; they route and validate, never parse telemetry       |
-| `middleware/` | CORS, rate limiting, and geo across the Worker→DO boundary          |
-| `services/`   | Which Durable Object owns what                                      |
-| `config/`     | Allowlist and limits                                                |
+| Directory              | Holds                                                               |
+| ---------------------- | ------------------------------------------------------------------- |
+| `protocol/`            | Parser for the node wire format. Pure; one file per message variant |
+| `domain/`              | Node and chain state, propagation, bounded series. Pure, no I/O     |
+| `gateway/`             | Node sockets, ingest policy, batching, chain directory access       |
+| `chain/`               | Per-chain state owner, feed batching and fanout                     |
+| `feed/`                | Domain → wire serialization for browsers                            |
+| `ports/`               | What the code needs from its host, as interfaces                    |
+| `adapters/cloudflare/` | The only place that names Cloudflare — the DO shells included       |
+| `db/`                  | The history and session SQL — the only place that writes statements |
+| `routes/`              | HTTP handlers; they route and validate, never parse telemetry       |
+| `middleware/`          | CORS                                                                |
+| `config/`              | Allowlist, limits and retention                                     |
 
-`tests/` mirrors `src/`, plus `tests/security/` for adversarial input. 262
+`tests/` mirrors `src/`, plus `tests/security/` for adversarial input. 371
 tests total; run them with `pnpm test`.
+
+### Ports and adapters
+
+The platform is reachable through one directory. `ports/` names what this
+service needs from wherever it runs — a clock, deferred work, one alarm, two
+repositories, a chain directory, sockets, how a chain is reached, and what the
+edge provides — and `adapters/cloudflare/` is the only implementation.
+
+That boundary is checked rather than asserted: `pnpm typecheck` also compiles
+`ports/` under `tsconfig.ports.json`, which supplies no ambient types at all,
+so an import that reaches a Cloudflare type fails the build.
+
+`ChainDO` and `GatewayDO` are shells. They build the Cloudflare-shaped pieces
+and forward to a `ChainService` and a `GatewayService` that name no platform
+type — which is what lets the reaper's ordering and the gateway's socket
+lifecycle be tested without a Durable Object to construct.
+
+One thing no interface can enforce is written down in `ports/transport.ts`: an
+adapter must not deliver a frame for a socket while that socket's previous
+frame is still being handled. Cloudflare provides it by awaiting the handler,
+which is why the promise chain that used to enforce it by hand could be
+deleted; a host whose socket library does not await has to put it back.
 
 ## History
 
@@ -56,17 +79,17 @@ Live state is never persisted — a node rebuilds it from the wire within
 seconds of reconnecting, so storing it would only add a second, always-stale
 copy. What no restart can rebuild is **time**, and that is what D1 holds:
 
-| Table                  | Written by                     | Kept     |
-| ---------------------- | ------------------------------ | -------- |
-| `chain_history`        | the `ChainDO` alarm, every 60s | 30 days  |
-| `chain_history_hourly` | the nightly cron rollup        | forever  |
-| `node_sessions`        | one row per connection         | one year |
+| Table                  | Written by                    | Kept     |
+| ---------------------- | ----------------------------- | -------- |
+| `chain_history`        | the chain's reaper, every 60s | 30 days  |
+| `chain_history_hourly` | the nightly cron rollup       | forever  |
+| `node_sessions`        | one row per connection        | one year |
 
 The aggregation happens in `ChainState.snapshot()` **before** the write, which
 is what makes the cost independent of node count: 5 nodes and 500 produce one
 row a minute either way, and the version/implementation/country histograms
 carry the per-node detail that a row-per-node would have cost 65× more to
-store. Writes go through `ctx.waitUntil` — history is best-effort, live
+store. Writes are deferred rather than awaited — history is best-effort, live
 telemetry is not, so an overloaded D1 can never delay the reaper or the feed.
 
 `node_sessions` answers what the per-chain histograms deliberately cannot:
@@ -106,7 +129,7 @@ invalid entries are ignored rather than crashing the worker.
 | `TELEMETRY_CHAINS`          | Comma-separated extras, for a fork under test       |
 
 **The allowlist is fail-closed: a chain that is not listed is rejected, and
-leaving all three empty serves nobody.** `GatewayDO` logs an error at startup
+leaving all three empty serves nobody.** `GatewayService` logs an error at startup
 in that case. There is no accept-everything mode — it would be one stray var
 away from letting any chain on the internet spawn a Durable Object here.
 
@@ -155,9 +178,9 @@ these protect.
 
 | Limit                                | Where                    | Close code |
 | ------------------------------------ | ------------------------ | ---------- |
-| 20 node ids per connection           | `GatewayDO`              | 4001       |
-| 256 KB/s per connection (10s window) | `GatewayDO`              | 4002       |
-| Genesis allowlist                    | `GatewayDO`              | 4003       |
+| 20 node ids per connection           | `GatewayService`         | 4001       |
+| 256 KB/s per connection (10s window) | `GatewayService`         | 4002       |
+| Genesis allowlist                    | `GatewayService`         | 4003       |
 | 20 upgrades/min per IP (`/submit`)   | edge rate limiter `6001` | HTTP 429   |
 | 60 upgrades/min per IP (`/feed`)     | edge rate limiter `6002` | HTTP 429   |
 
