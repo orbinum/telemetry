@@ -50,10 +50,9 @@ type Entry = { nodeKey: string; msg: NodeMessage };
 
 /** `unknownPerCall` scripts what each successive RPC reports as forgotten. */
 function makeBatcher(unknownPerCall: string[][] = []) {
-  const nodeConnected =
-    vi.fn<(nodeKey: string, msg: SystemConnectedMessage, geo: undefined) => Promise<void>>(
-      async () => {},
-    );
+  const nodeConnected = vi.fn<
+    (nodeKey: string, msg: SystemConnectedMessage, geo: undefined) => Promise<void>
+  >(async () => {});
   let call = 0;
   const nodeMessages = vi.fn<(batch: Entry[]) => Promise<string[]>>(
     async () => unknownPerCall[call++] ?? [],
