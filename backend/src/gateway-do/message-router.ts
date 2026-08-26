@@ -15,6 +15,7 @@ import {
   MAX_NODES_PER_CONNECTION,
 } from "../config/limits";
 import type { ChainDirectory } from "./chain-directory";
+import type { IngestBatcher } from "./ingest-batcher";
 import type { NodeConnection } from "./connection";
 import type { RouteTable } from "./route-table";
 import type { ChainDO } from "../chain-do";
@@ -28,6 +29,7 @@ export interface MessageRouterDeps {
   directory: ChainDirectory;
   allowedChains: Set<string>;
   chainStub: ChainStubResolver;
+  batcher: IngestBatcher;
   now: () => number;
 }
 
@@ -50,10 +52,11 @@ export class MessageRouter {
   /** Route one message. Closes the connection when it breaks a limit. */
   async route(conn: NodeConnection, msg: NodeMessage): Promise<void> {
     if (msg.msg === "system.connected") {
+      await this.deps.batcher.flushAll();
       await this.routeConnected(conn, msg);
       return;
     }
-    await this.routeNodeMessage(conn, msg);
+    this.routeNodeMessage(conn, msg);
   }
 
   private async routeConnected(
@@ -99,22 +102,12 @@ export class MessageRouter {
     this.deps.directory.touch(genesisHash, now);
   }
 
-  private async routeNodeMessage(conn: NodeConnection, msg: NodeMessage): Promise<void> {
+  private routeNodeMessage(conn: NodeConnection, msg: NodeMessage): void {
     const genesisHash = this.deps.routes.resolve(conn.id, msg.id);
     // Messages before system.connected can't be routed — drop them.
     if (genesisHash === undefined) return;
 
     this.touchChain(genesisHash);
-
-    const stub = this.deps.chainStub(genesisHash);
-    const nodeKey = conn.nodeKey(msg.id);
-
-    if (await stub.nodeMessage(nodeKey, msg)) return;
-
-    // The ChainDO was evicted: replay the cached connected and retry.
-    const connected = conn.recallConnected(msg.id);
-    if (connected === undefined) return;
-    await stub.nodeConnected(nodeKey, connected, conn.geo);
-    await stub.nodeMessage(nodeKey, msg);
+    this.deps.batcher.add(genesisHash, conn, conn.nodeKey(msg.id), msg);
   }
 }

@@ -4,6 +4,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { IngestBatcher } from "../../src/gateway-do/ingest-batcher";
 import { MessageRouter } from "../../src/gateway-do/message-router";
 import { RouteTable } from "../../src/gateway-do/route-table";
 import { MAX_NODES_PER_CONNECTION } from "../../src/config/limits";
@@ -46,21 +47,26 @@ function fakeConnection(id = "1") {
 }
 
 let nodeConnected: ReturnType<typeof vi.fn>;
-let nodeMessage: ReturnType<typeof vi.fn>;
+let nodeMessages: ReturnType<typeof vi.fn>;
+let batcher: IngestBatcher;
 let record: ReturnType<typeof vi.fn>;
 let routes: RouteTable;
 
 function makeRouter(allowed: Set<string> = new Set([ALLOWED])) {
   nodeConnected = vi.fn(async () => {});
-  nodeMessage = vi.fn(async () => true);
+  // Batched RPC: resolves to the node keys the ChainDO did not recognize.
+  nodeMessages = vi.fn(async () => [] as string[]);
   record = vi.fn();
   routes = new RouteTable();
+  const chainStub = () => ({ nodeConnected, nodeMessages }) as never;
+  batcher = new IngestBatcher(chainStub);
 
   return new MessageRouter({
     routes,
     directory: { record, list: () => [] } as unknown as ChainDirectory,
     allowedChains: allowed,
-    chainStub: () => ({ nodeConnected, nodeMessage }) as never,
+    chainStub,
+    batcher,
     now: () => 1000,
   });
 }
@@ -140,27 +146,15 @@ describe("other messages", () => {
     await router.route(conn, connected(1));
 
     await router.route(conn, interval);
+    await batcher.flushAll();
 
-    expect(nodeMessage).toHaveBeenCalledWith("1:1", interval);
+    expect(nodeMessages).toHaveBeenCalledWith([{ nodeKey: "1:1", msg: interval }]);
   });
 
   it("drops messages that arrive before system.connected", async () => {
     const router = makeRouter();
     await router.route(fakeConnection(), interval);
-    expect(nodeMessage).not.toHaveBeenCalled();
-  });
-
-  it("replays the cached connected when the ChainDO was evicted", async () => {
-    const router = makeRouter();
-    const conn = fakeConnection();
-    await router.route(conn, connected(1));
-    nodeConnected.mockClear();
-
-    // The DO reports it has never heard of this node.
-    nodeMessage.mockResolvedValueOnce(false);
-    await router.route(conn, interval);
-
-    expect(nodeConnected).toHaveBeenCalledTimes(1); // the replay
-    expect(nodeMessage).toHaveBeenCalledTimes(2); // failed, then retried
+    await batcher.flushAll();
+    expect(nodeMessages).not.toHaveBeenCalled();
   });
 });

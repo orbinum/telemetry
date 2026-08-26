@@ -12,12 +12,21 @@
 const DEFAULT_WINDOW_MS = 10_000;
 const DEFAULT_GRANULARITY_MS = 1000;
 
+/**
+ * Serialized form. Plain data so it can ride a WebSocket attachment: the byte
+ * budget has to survive a Durable Object eviction, or a client could reset it
+ * at will by making the object drop.
+ */
+export interface RollingTotalState {
+  buckets: number[];
+  latestBucket: number;
+  sum: number;
+}
+
 export class RollingTotal {
   private readonly bucketCount: number;
   private readonly granularityMs: number;
-  /** Ring buffer of per-bucket sums. */
   private buckets: number[];
-  /** Bucket index (absolute, not modulo) of the most recent write. */
   private latestBucket = 0;
   private sum = 0;
 
@@ -43,6 +52,23 @@ export class RollingTotal {
   total(now: number): number {
     this.expire(Math.floor(now / this.granularityMs));
     return this.sum;
+  }
+
+  /** Snapshot for a WebSocket attachment. */
+  toJSON(): RollingTotalState {
+    return { buckets: [...this.buckets], latestBucket: this.latestBucket, sum: this.sum };
+  }
+
+  /**
+   * Restore a snapshot. Ignores a state whose bucket count disagrees with this
+   * instance's window — a deploy that retunes the budget would otherwise
+   * resurrect a ring buffer of the wrong length and mis-expire forever.
+   */
+  restore(state: RollingTotalState): void {
+    if (state.buckets.length !== this.bucketCount) return;
+    this.buckets = [...state.buckets];
+    this.latestBucket = state.latestBucket;
+    this.sum = state.sum;
   }
 
   /** Drop buckets that fell out of the window as time moved to `bucket`. */

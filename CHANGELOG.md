@@ -12,6 +12,80 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Fixed
+
+- **A validator's address was written to D1 on every announcement.** Each
+  `afg.authority_set` fired a write, and a node re-announces the same address
+  for as long as it stays in the set — the last per-message database write left
+  in the ingest path. The write is now skipped when the address matches what
+  the node already reported, so only an actual change reaches D1.
+
+  The comparison reads the node's address before `applyMessage` runs, because
+  that call overwrites it in place: afterwards there is nothing left to compare
+  a repeat against.
+
+- **Ingest paid a full billed request per node frame.** The gateway called
+  `nodeMessage` on a ChainDO once for every frame a node sent. Each RPC call is
+  billed as its own request, and unlike the WebSocket frames feeding them it
+  gets no 20:1 discount — so the hop between the two objects cost roughly
+  twenty times the sockets carrying the same traffic. At 500 nodes that is
+  ~1.000 RPCs/s into a single object.
+
+  Frames now accumulate per chain for 100 ms and travel in one `nodeMessages`
+  call, which collapses a chain's ingest to ~10 calls/s. The window matches the
+  feed's own flush interval, so nothing downstream can observe the delay.
+
+  `nodeMessages` returns the node keys the chain did not recognize rather than
+  a single flag. That keeps the eviction recovery per node: a ChainDO that was
+  evicted while the gateway held the socket forgets some nodes and not others,
+  and one forgotten node must not force a whole chain's batch to be replayed.
+
+  Batching lives in its own `IngestBatcher` rather than inside `MessageRouter`.
+  The router decides whether a message may be routed and where; the batcher
+  decides when it travels and how a failed delivery is retried. Keeping a timer
+  and a recovery loop out of the class that holds the ingest policy is what
+  lets both be tested without a WebSocket.
+
+- **The four gateway objects were billed around the clock.** `GatewayDO`
+  accepted node sockets with a plain `accept()`, which bills wall-clock
+  duration for as long as the socket is open — and node sockets are open
+  permanently. Four partitions therefore ran up duration charges 24/7 whether
+  or not a frame ever arrived. `ChainDO` had used the hibernation API for
+  browser feeds since Phase 4; the ingest half never got the same treatment.
+
+  Node sockets are now accepted with `ctx.acceptWebSocket()`, so a partition is
+  billed only while it is actually handling a frame.
+
+  That moves per-socket state out of the object, since hibernation evicts it
+  while the socket lives on. The byte budget, the geo and the cached
+  `system.connected` now ride the socket's attachment. The budget mattered
+  most: had it stayed in memory, a client could have reset its own rate limit
+  for free by making the object drop.
+
+  Two things fell out of the change. The hand-rolled promise chain that kept a
+  connection's frames in order is gone — the runtime already delivers one
+  socket's messages one at a time. And the connection-id counter now resumes
+  past the highest id still connected: restarting at 1 after an eviction would
+  have handed a new socket the id of one still streaming, and since both build
+  the same node keys, the older node would have been silently replaced.
+
+- **A brief outage made every open tab reconnect in lockstep.** The feed client
+  retried on a fixed 2 s delay with no jitter and no ceiling, so the moment a
+  chain's Durable Object blipped, every browser watching it came back at the
+  same instant — and kept doing so, twice a minute each, for as long as the
+  outage lasted. Every attempt costs a billed request plus a full init snapshot,
+  which at 500 nodes is ~338 kB, so the retries were most expensive exactly when
+  the object could least afford them.
+
+  Reconnects now back off exponentially from 2 s to 30 s with ±25% jitter. The
+  jitter is the half that breaks the herd: without it clients stay
+  synchronized, only slower.
+
+  The backoff resets on the first `init` frame rather than on `onopen`. A
+  Durable Object that accepts a socket and then dies still fires `onopen`, so
+  resetting there would pin the delay at 2 s through precisely the outage the
+  backoff exists for. An `init` proves the object is actually serving.
+
 ## [0.6.0] - 2026-08-21
 
 ### Added
