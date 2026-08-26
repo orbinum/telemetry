@@ -12,6 +12,25 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Changed
+
+- **A chain's orchestration is testable.** `ChainDO` was 361 lines of a class
+  that cannot be constructed outside a Durable Object, so the ordering its
+  comments describe — reap, then sweep, then close sessions, then write the
+  history row — was never checked by anything. It is now a 96-line shell over a
+  `ChainService` that takes a clock, deferred work and an alarm as ports and
+  names no platform type at all.
+
+  The reaper's order is pinned by tests rather than prose. Closing the reaped
+  sessions before writing the history row is what makes the row describe the
+  nodes still present; inverting the two produces plausible output and wrong
+  history, and now fails the suite.
+
+  So is the race in the validator restore, which had none: an address read from
+  storage must lose to one that arrived live while that read was in flight. The
+  re-check that decides it runs inside a deferred callback, which is precisely
+  the kind of timing a test could not previously reach.
+
 ## [0.6.3] - 2026-08-26
 
 ### Fixed
