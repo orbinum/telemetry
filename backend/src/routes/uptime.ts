@@ -12,7 +12,7 @@
  */
 
 import type { Context } from "hono";
-import { readSessions, readUptime } from "../db/node-sessions";
+import { D1SessionRepository } from "../adapters/cloudflare/d1-session-repository";
 import { allowRequest, clientIp } from "../middleware/rate-limit";
 
 const GENESIS_RE = /^0x[0-9a-f]{64}$/;
@@ -51,10 +51,10 @@ export async function uptime(c: Context<{ Bindings: CloudflareBindings }>): Prom
     return Response.json({ error: "too many requests" }, { status: 429 });
   }
 
-  const db = c.env.DB;
-  if (db === undefined) {
+  if (c.env.DB === undefined) {
     return Response.json({ error: "uptime is not configured" }, { status: 503 });
   }
+  const sessions = new D1SessionRepository(c.env.DB);
 
   const now = Date.now();
   const from = now - windowMs;
@@ -66,11 +66,11 @@ export async function uptime(c: Context<{ Bindings: CloudflareBindings }>): Prom
         window: requested,
         networkId: node,
         identity: "self-reported",
-        sessions: await readSessions(db, genesisHash, node, from),
+        sessions: await sessions.readSessions(genesisHash, node, from),
       });
     }
 
-    const nodes = await readUptime(db, genesisHash, from, now);
+    const nodes = await sessions.readUptime(genesisHash, from, now);
     return Response.json({
       genesisHash,
       window: requested,

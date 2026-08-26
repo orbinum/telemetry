@@ -12,7 +12,7 @@
  *   - `ChainState` owns the domain (nodes, aggregates, propagation)
  *   - `FeedHub` owns what changed since the last flush
  *   - `FeedBroadcaster` owns snapshots, batching and fanout
- *   - `db/chain-history` and `db/node-sessions` own the history tables
+ *   - the history and session repositories own long-lived storage
  *   - this class owns RPC, sockets and the reaper alarm
  *
  * The reaper alarm doubles as the history writer: it already runs once a
@@ -22,19 +22,14 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { FeedBroadcaster } from "./feed-broadcaster";
-import { writeSnapshot } from "../db/chain-history";
-import {
-  closeOrphanSessions,
-  closeSessions,
-  openSession,
-  readLastValidatorAddress,
-  recordValidatorAddress,
-} from "../db/node-sessions";
+import { D1HistoryRepository } from "../adapters/cloudflare/d1-history-repository";
+import { D1SessionRepository } from "../adapters/cloudflare/d1-session-repository";
 import { ChainState, NODE_TIMEOUT_MS } from "../domain/chain-state";
 import { FeedHub } from "../feed/hub";
 import type { ChainSnapshot } from "../domain/chain-snapshot";
 import type { NodeGeo, NodeState } from "../domain/node-state";
 import type { NodeEntry } from "../domain/node-table";
+import type { HistoryRepository, SessionRepository } from "../ports/persistence";
 import type { NodeMessage, SystemConnectedMessage } from "../protocol/node";
 
 /** Reaper cadence: sweep expired nodes once a minute while any are alive. */
@@ -51,6 +46,14 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
   private chain?: ChainState;
 
   /**
+   * Storage, or undefined where the binding is absent (dev, tests). Built once
+   * rather than per write: the check every caller used to repeat is now the
+   * single question of whether this service has somewhere to persist to.
+   */
+  private readonly history?: HistoryRepository;
+  private readonly sessions?: SessionRepository;
+
+  /**
    * When this instance started. Sessions still open from before it are the
    * work of an object that died without closing them.
    */
@@ -62,6 +65,8 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
 
   constructor(ctx: DurableObjectState, env: CloudflareBindings) {
     super(ctx, env);
+    this.history = env.DB === undefined ? undefined : new D1HistoryRepository(env.DB);
+    this.sessions = env.DB === undefined ? undefined : new D1SessionRepository(env.DB);
     this.feed = new FeedBroadcaster(this.hub, () => this.ctx.getWebSockets());
     this.ctx.setWebSocketAutoResponse(KEEPALIVE);
   }
@@ -186,8 +191,8 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
    * inflated uptime figure, not the feed.
    */
   private sweepOrphanSessions(): void {
-    const db = this.env.DB;
-    if (db === undefined || this.sweptOrphans || this.chain === undefined) return;
+    const sessions = this.sessions;
+    if (sessions === undefined || this.sweptOrphans || this.chain === undefined) return;
     this.sweptOrphans = true;
 
     const genesisHash = this.chain.genesisHash;
@@ -195,7 +200,8 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
     // every node it currently holds.
     const live = this.chain.list().map(({ node }) => node.connectedAt);
     this.ctx.waitUntil(
-      closeOrphanSessions(db, genesisHash, live, this.startedAt)
+      sessions
+        .closeOrphans(genesisHash, live, this.startedAt)
         .then((closed) => {
           if (closed > 0) console.log(`closed ${closed} orphan sessions for ${genesisHash}`);
         })
@@ -214,10 +220,10 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
    * alarm costs the node list.
    */
   private recordHistory(snapshot: ChainSnapshot): void {
-    const db = this.env.DB;
-    if (db === undefined) return; // no binding (dev, tests) → no history
+    const history = this.history;
+    if (history === undefined) return; // no binding (dev, tests) → no history
     this.ctx.waitUntil(
-      writeSnapshot(db, snapshot).catch((error: unknown) => {
+      history.writeSnapshot(snapshot).catch((error: unknown) => {
         console.error("chain history write failed", error);
       }),
     );
@@ -228,20 +234,16 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
    * writes: losing it costs a column in the UI, not the feed.
    */
   private recordValidator(node: NodeState | undefined, address: string): void {
-    const db = this.env.DB;
-    if (db === undefined || node === undefined || this.chain === undefined) return;
+    const sessions = this.sessions;
+    if (sessions === undefined || node === undefined || this.chain === undefined) return;
     const { networkId } = node.details;
     if (networkId === undefined) return;
     this.ctx.waitUntil(
-      recordValidatorAddress(
-        db,
-        this.chain.genesisHash,
-        networkId,
-        node.connectedAt,
-        address,
-      ).catch((error: unknown) => {
-        console.error("validator address write failed", error);
-      }),
+      sessions
+        .recordValidatorAddress(this.chain.genesisHash, networkId, node.connectedAt, address)
+        .catch((error: unknown) => {
+          console.error("validator address write failed", error);
+        }),
     );
   }
 
@@ -258,15 +260,16 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
    * keeps it, so a stale row can never overwrite live data.
    */
   private restoreValidator(id: number): void {
-    const db = this.env.DB;
-    if (db === undefined || this.chain === undefined) return;
+    const sessions = this.sessions;
+    if (sessions === undefined || this.chain === undefined) return;
     const node = this.chain.getById(id);
     const networkId = node?.details.networkId;
     if (node === undefined || networkId === undefined || node.validator !== undefined) return;
 
     const genesisHash = this.chain.genesisHash;
     this.ctx.waitUntil(
-      readLastValidatorAddress(db, genesisHash, networkId)
+      sessions
+        .readLastValidatorAddress(genesisHash, networkId)
         .then((address) => {
           // Re-check: afg may have landed while D1 was being read, and the
           // live message is the more current of the two.
@@ -294,10 +297,10 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
 
   /** Open a session for a node that just announced itself. Best-effort. */
   private recordSessionStart(node: NodeState | undefined): void {
-    const db = this.env.DB;
-    if (db === undefined || node === undefined || this.chain === undefined) return;
+    const sessions = this.sessions;
+    if (sessions === undefined || node === undefined || this.chain === undefined) return;
     this.ctx.waitUntil(
-      openSession(db, this.chain.genesisHash, node).catch((error: unknown) => {
+      sessions.open(this.chain.genesisHash, node).catch((error: unknown) => {
         console.error("session open failed", error);
       }),
     );
@@ -312,14 +315,14 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
    * invocation runs out of queries.
    */
   private recordSessionEnd(departed: NodeEntry[], now: number): void {
-    const db = this.env.DB;
-    if (db === undefined || this.chain === undefined || departed.length === 0) return;
-    const sessions = departed.map((entry) => ({
+    const sessions = this.sessions;
+    if (sessions === undefined || this.chain === undefined || departed.length === 0) return;
+    const departures = departed.map((entry) => ({
       networkId: entry.node.details.networkId,
       connectedAt: entry.node.connectedAt,
     }));
     this.ctx.waitUntil(
-      closeSessions(db, this.chain.genesisHash, sessions, now).catch((error: unknown) => {
+      sessions.close(this.chain.genesisHash, departures, now).catch((error: unknown) => {
         console.error("session close failed", error);
       }),
     );

@@ -16,12 +16,7 @@
 import type { NodeState } from "../domain/node-state";
 import type { NodeSession, NodeUptime } from "../ports/persistence";
 
-/**
- * How long sessions are kept. A year, where raw chain history keeps 30 days:
- * a session is one row per connection rather than one per minute, so a year of
- * them for a 500-node network is a few hundred thousand rows.
- */
-export const SESSION_RETENTION_MS = 365 * 24 * 60 * 60 * 1000;
+export { SESSION_RETENTION_MS } from "../config/limits";
 
 export type { NodeSession, NodeUptime } from "../ports/persistence";
 

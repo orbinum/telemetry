@@ -14,6 +14,27 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Changed
 
+- **Storage reaches the code as a repository rather than a database.**
+  `ChainDO`, the two history routes and the nightly cron took a `D1Database`
+  and called free functions on it; they now hold a `HistoryRepository` or a
+  `SessionRepository` and cannot tell what is behind it. `D1Database` no longer
+  appears anywhere in `src/` outside the adapter and the module holding the
+  SQL.
+
+  The statements did not move and were not rewritten — the adapters bind a
+  database to the existing functions and nothing else, which is what makes the
+  change reviewable and what lets the SQL tests keep proving the same
+  behaviour.
+
+  `ChainDO` builds its repositories once in the constructor instead of reading
+  the binding in each of the six best-effort writes. The question every one of
+  those repeated — is there a database at all — is now asked once, and the
+  answer is a field that is either there or not.
+
+  Retention windows moved to `config/limits.ts`, alongside the other policy
+  constants. How long the service promises to remember something is not a
+  property of the database that happens to hold it.
+
 - **The contract with the hosting platform is now written down.** `src/ports/`
   holds the interfaces the code needs from wherever it runs: a clock, deferred
   work, one pending alarm, the two repositories, the chain directory, sockets,
