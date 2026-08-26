@@ -12,6 +12,38 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Changed
+
+- **The directory layout says what the layers are.** Thirteen directories sat
+  flat under `src/`, all looking like peers when they were at four different
+  levels: nothing distinguished `domain/` from `db/` from `adapters/` without
+  opening files. They are now nested under `core/` (pure, no I/O), `app/`
+  (orchestration, speaks ports) and `platform/` (the only place that names
+  Cloudflare).
+
+  The nesting is the point: a directory may import from the layers above it and
+  never below, so an architecture error shows up as a `../../platform/` in a
+  diff instead of hiding in a flat list. Numbered prefixes were the
+  alternative and were rejected — they dirty every import path with an ordinal
+  that means nothing outside the convention, and they prevent nothing.
+
+  Three files moved to the layer they actually belonged to. `db/` takes a
+  `D1Database` as its first parameter, so it was never a peer of `domain/`; it
+  is now `platform/cloudflare/sql/`, travelling with the adapter that executes
+  it. `geo-header.ts` is the wire format between the Worker half and the object
+  holding the socket — used by both sides, so it sits with the other wire
+  contracts in `core/protocol/`. And `middleware/`, a directory holding one
+  19-line CORS config, dissolved into `app/http/` next to the handlers using it.
+
+  The move surfaced a violation that was invisible while everything was flat:
+  `AppDeps` lived in the Cloudflare adapter, so the route layer imported a type
+  from the platform to describe its own request context. Every field in it is a
+  port, so it belongs with them — it is now `app/ports/deps.ts`, and nothing
+  under `app/` or `core/` names `platform/` any more.
+
+  No file changed except its import lines; the 371 tests pass unedited apart
+  from paths.
+
 ## [0.6.4] - 2026-08-26
 
 ### Fixed

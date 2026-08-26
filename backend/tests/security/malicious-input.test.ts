@@ -10,11 +10,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { ChainState } from "../../src/domain/chain-state";
-import { toFeedChain, toFeedNode } from "../../src/feed/serialize";
-import { MAX_ADDRESS_LENGTH, MAX_STRING_LENGTH } from "../../src/protocol/limits";
-import { parseNodeMessage } from "../../src/protocol/node";
-import type { SystemConnectedMessage } from "../../src/protocol/node";
+import { ChainState } from "../../src/core/domain/chain-state";
+import { toFeedChain, toFeedNode } from "../../src/core/feed/serialize";
+import { MAX_ADDRESS_LENGTH, MAX_STRING_LENGTH } from "../../src/core/protocol/limits";
+import { parseNodeMessage } from "../../src/core/protocol/node";
+import type { SystemConnectedMessage } from "../../src/core/protocol/node";
 import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
