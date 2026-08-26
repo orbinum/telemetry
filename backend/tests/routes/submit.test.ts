@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { GEO_HEADER } from "../../src/gateway-do/geo-header";
+import { GEO_HEADER } from "../../src/gateway/geo-header";
 import { submit } from "../../src/routes/submit";
 import { durableObjectRegistry } from "../../src/adapters/cloudflare/chain-registry";
 import { cloudflareGeo } from "../../src/adapters/cloudflare/geo";

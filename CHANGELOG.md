@@ -14,6 +14,21 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Changed
 
+- **The gateway's socket lifecycle is testable, and no directory is named
+  after a platform any more.** `GatewayDO` is now an 89-line shell over a
+  `GatewayService` that names no Cloudflare type. `gateway-do/` and `chain-do/`
+  became `gateway/` and `chain/`; the two shells moved in with the rest of the
+  adapter, which is what they always were.
+
+  The ordering the ingest path depends on is finally pinned by tests. A node
+  must be introduced to its chain before its own messages are applied, and its
+  last buffered messages must reach the chain before it is told the node left —
+  reverse the second and the node is resurrected until the reaper sweeps it a
+  minute later, which is exactly the kind of failure that reads as correct.
+
+  Both are enforced by flushes rather than by any type, which is why they now
+  have tests that fail when the calls are reordered.
+
 - **No route reads the environment any more.** The five handlers took a
   `CloudflareBindings` and pulled a limiter, a database and a Durable Object
   namespace out of it; they now receive ports, put there once per request by a

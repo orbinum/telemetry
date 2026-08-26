@@ -1,13 +1,13 @@
 /**
  * `/submit` — the node ingest upgrade. Validates that the request is a
  * WebSocket upgrade, throttles connection churn, attaches the geo header
- * (request.cf dies at the DO boundary), and hands the socket to this
+ * (what the edge knows dies at the object boundary), and hands the socket to this
  * client's gateway partition. No parsing here.
  */
 
 import type { Context } from "hono";
 import type { AppEnv } from "../app-env";
-import { GEO_HEADER, geoHeaderValue } from "../gateway-do/geo-header";
+import { GEO_HEADER, geoHeaderValue } from "../gateway/geo-header";
 
 export async function submit(c: Context<AppEnv>): Promise<Response> {
   if (c.req.raw.headers.get("Upgrade")?.toLowerCase() !== "websocket") {

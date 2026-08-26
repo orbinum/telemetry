@@ -5,13 +5,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { IngestBatcher } from "../../src/gateway-do/ingest-batcher";
-import { MessageRouter } from "../../src/gateway-do/message-router";
-import { RouteTable } from "../../src/gateway-do/route-table";
+import { IngestBatcher } from "../../src/gateway/ingest-batcher";
+import { MessageRouter } from "../../src/gateway/message-router";
+import { RouteTable } from "../../src/gateway/route-table";
 import type { ChainSink } from "../../src/ports/chains";
 import { MAX_NODES_PER_CONNECTION } from "../../src/config/limits";
 import type { ChainDirectoryStore } from "../../src/ports/directory";
-import type { NodeConnection } from "../../src/gateway-do/connection";
+import type { NodeConnection } from "../../src/gateway/connection";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
 import { peerId } from "../fixtures/peer-id";
 

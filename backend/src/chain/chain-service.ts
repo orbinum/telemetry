@@ -17,7 +17,7 @@
  * lifecycle a history row wants.
  */
 
-import { FeedBroadcaster } from "../chain-do/feed-broadcaster";
+import { FeedBroadcaster } from "./feed-broadcaster";
 import { ChainState, NODE_TIMEOUT_MS } from "../domain/chain-state";
 import { FeedHub } from "../feed/hub";
 import type { ChainSnapshot } from "../domain/chain-snapshot";

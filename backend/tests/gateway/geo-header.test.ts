@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GEO_HEADER, geoHeaderValue, parseGeoHeader } from "../../src/gateway-do/geo-header";
+import { GEO_HEADER, geoHeaderValue, parseGeoHeader } from "../../src/gateway/geo-header";
 
 /** A location as the edge adapter would have produced it. */
 const SANTIAGO = { city: "Santiago", country: "CL", latitude: -33.45694, longitude: -70.64827 };

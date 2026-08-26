@@ -20,8 +20,8 @@ import { history } from "./routes/history";
 import { submit } from "./routes/submit";
 import { uptime } from "./routes/uptime";
 
-export { ChainDO } from "./chain-do";
-export { GatewayDO } from "./gateway-do";
+export { ChainDO } from "./adapters/cloudflare/chain-do";
+export { GatewayDO } from "./adapters/cloudflare/gateway-do";
 
 const app = new Hono<AppEnv>();
 

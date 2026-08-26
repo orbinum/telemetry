@@ -15,12 +15,12 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { D1HistoryRepository } from "../adapters/cloudflare/d1-history-repository";
-import { D1SessionRepository } from "../adapters/cloudflare/d1-session-repository";
-import { durableObjectAlarms, durableObjectDeferred } from "../adapters/cloudflare/do-runtime";
-import { ChainService } from "../chain/chain-service";
-import type { NodeGeo } from "../domain/node-state";
-import type { NodeMessage, SystemConnectedMessage } from "../protocol/node";
+import { D1HistoryRepository } from "./d1-history-repository";
+import { D1SessionRepository } from "./d1-session-repository";
+import { durableObjectAlarms, durableObjectDeferred } from "./do-runtime";
+import { ChainService } from "../../chain/chain-service";
+import type { NodeGeo } from "../../domain/node-state";
+import type { NodeMessage, SystemConnectedMessage } from "../../protocol/node";
 
 /**
  * Keepalive for browser feeds: lets a client notice a socket dropped without a
