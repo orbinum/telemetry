@@ -14,6 +14,26 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Changed
 
+- **The chain directory is a store the gateway asks, not a table it owns.**
+  `MessageRouter` and the gateway now depend on `ChainDirectoryStore`; only the
+  adapter behind it knows there is SQLite involved. `SqlStorage` no longer
+  appears anywhere in `src/` outside `adapters/`.
+
+  `GET /chains` stops importing a row type constrained by `SqlStorageValue` to
+  describe its own JSON. What the route wanted was a listing; what it had was
+  the shape of a database row, and the two were the same only by coincidence.
+
+  The port is deliberately synchronous. The store is process-local in every
+  target — a Durable Object's SQLite lives in the isolate, and a single-process
+  host would use a Map — so there is nothing to await, while `touchChain` runs
+  on every routed message and would become a floating promise.
+
+  Its tests now run twice: once against the SQLite adapter the worker deploys,
+  once against a Map written in the test file. Two implementations answering
+  identically is the evidence that the port describes behaviour and not one
+  driver. The hand-written fake that string-matched each query and
+  reimplemented it is gone — it could only ever prove its own SQL.
+
 - **Storage reaches the code as a repository rather than a database.**
   `ChainDO`, the two history routes and the nightly cron took a `D1Database`
   and called free functions on it; they now hold a `HistoryRepository` or a

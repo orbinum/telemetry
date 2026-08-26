@@ -10,7 +10,7 @@
  * Responsibilities are split deliberately:
  *   - `NodeConnection` owns per-socket state and the byte budget
  *   - `MessageRouter` owns the ingest policy (allowlist, node cap, routing)
- *   - `ChainDirectory` owns the SQLite table
+ *   - the chain directory owns what the picker needs after a deploy
  *   - this class owns only sockets and their lifecycle
  *
  * Node sockets use the hibernation API. A plain `accept()` bills wall-clock
@@ -21,12 +21,13 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { ChainDirectory } from "./chain-directory";
+import { SqlChainDirectory } from "../adapters/cloudflare/sql-chain-directory";
 import { NodeConnection } from "./connection";
 import { IngestBatcher } from "./ingest-batcher";
 import { frameToText } from "./frames";
 import { MessageRouter } from "./message-router";
 import { RouteTable } from "./route-table";
+import type { ChainDirectoryStore } from "../ports/directory";
 import { parseAllowedChains } from "../config/chains";
 import { CLOSE_BYTE_BUDGET } from "../config/limits";
 import { parseGeoHeader } from "../middleware/geo";
@@ -35,7 +36,7 @@ import type { ChainDO } from "../chain-do";
 
 export class GatewayDO extends DurableObject<CloudflareBindings> {
   private readonly routes = new RouteTable();
-  private readonly directory: ChainDirectory;
+  private readonly directory: ChainDirectoryStore;
   private readonly batcher: IngestBatcher;
   private readonly router: MessageRouter;
   private nextConnId = 1;
@@ -49,7 +50,7 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
 
   constructor(ctx: DurableObjectState, env: CloudflareBindings) {
     super(ctx, env);
-    this.directory = new ChainDirectory(ctx.storage.sql);
+    this.directory = new SqlChainDirectory(ctx.storage.sql);
     this.idPrefix = ctx.id.toString();
 
     // Sockets outlive the object under hibernation, so a counter restarting at

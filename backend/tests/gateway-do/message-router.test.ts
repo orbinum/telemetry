@@ -8,7 +8,7 @@ import { IngestBatcher } from "../../src/gateway-do/ingest-batcher";
 import { MessageRouter } from "../../src/gateway-do/message-router";
 import { RouteTable } from "../../src/gateway-do/route-table";
 import { MAX_NODES_PER_CONNECTION } from "../../src/config/limits";
-import type { ChainDirectory } from "../../src/gateway-do/chain-directory";
+import type { ChainDirectoryStore } from "../../src/ports/directory";
 import type { NodeConnection } from "../../src/gateway-do/connection";
 import type { SystemConnectedMessage } from "../../src/protocol/node";
 import { peerId } from "../fixtures/peer-id";
@@ -63,7 +63,7 @@ function makeRouter(allowed: Set<string> = new Set([ALLOWED])) {
 
   return new MessageRouter({
     routes,
-    directory: { record, list: () => [] } as unknown as ChainDirectory,
+    directory: { record, list: () => [] } as unknown as ChainDirectoryStore,
     allowedChains: allowed,
     chainStub,
     batcher,

@@ -14,7 +14,7 @@ import {
   CLOSE_TOO_MANY_NODES,
   MAX_NODES_PER_CONNECTION,
 } from "../config/limits";
-import type { ChainDirectory } from "./chain-directory";
+import type { ChainDirectoryStore } from "../ports/directory";
 import type { IngestBatcher } from "./ingest-batcher";
 import type { NodeConnection } from "./connection";
 import type { RouteTable } from "./route-table";
@@ -26,7 +26,7 @@ export type ChainStubResolver = (genesisHash: string) => DurableObjectStub<Chain
 
 export interface MessageRouterDeps {
   routes: RouteTable;
-  directory: ChainDirectory;
+  directory: ChainDirectoryStore;
   allowedChains: Set<string>;
   chainStub: ChainStubResolver;
   batcher: IngestBatcher;
