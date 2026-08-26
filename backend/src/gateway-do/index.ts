@@ -23,6 +23,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { ChainDirectory } from "./chain-directory";
 import { NodeConnection } from "./connection";
+import { IngestBatcher } from "./ingest-batcher";
 import { frameToText } from "./frames";
 import { MessageRouter } from "./message-router";
 import { RouteTable } from "./route-table";
@@ -35,6 +36,7 @@ import type { ChainDO } from "../chain-do";
 export class GatewayDO extends DurableObject<CloudflareBindings> {
   private readonly routes = new RouteTable();
   private readonly directory: ChainDirectory;
+  private readonly batcher: IngestBatcher;
   private readonly router: MessageRouter;
   private nextConnId = 1;
 
@@ -65,11 +67,13 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
       );
     }
 
+    this.batcher = new IngestBatcher((genesisHash) => this.chainStub(genesisHash));
     this.router = new MessageRouter({
       routes: this.routes,
       directory: this.directory,
       allowedChains,
       chainStub: (genesisHash) => this.chainStub(genesisHash),
+      batcher: this.batcher,
       now: () => Date.now(),
     });
   }
@@ -131,21 +135,33 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
     // One place decides what a handled frame leaves behind, so no branch of
     // `onFrame` can forget to save the budget it just charged.
     conn.persist();
-    if (conn.isClosed) this.releaseConnection(conn);
+    if (conn.isClosed) await this.dropConnection(conn);
   }
 
   override async webSocketClose(socket: WebSocket): Promise<void> {
-    this.onSocketGone(socket);
+    await this.onSocketGone(socket);
   }
 
   override async webSocketError(socket: WebSocket): Promise<void> {
-    this.onSocketGone(socket);
+    await this.onSocketGone(socket);
   }
 
-  private onSocketGone(socket: WebSocket): void {
+  private async onSocketGone(socket: WebSocket): Promise<void> {
     const conn = NodeConnection.fromSocket(socket);
     if (conn === undefined) return;
     conn.markClosed();
+    await this.dropConnection(conn);
+  }
+
+  /**
+   * Forget a connection, shipping whatever it still had buffered.
+   *
+   * The flush comes first: a batch holding this socket's last messages would
+   * otherwise be applied *after* the chain was told the node left, resurrecting
+   * it until the reaper swept it a minute later.
+   */
+  private async dropConnection(conn: NodeConnection): Promise<void> {
+    await this.batcher.flushAll();
     this.releaseConnection(conn);
   }
 

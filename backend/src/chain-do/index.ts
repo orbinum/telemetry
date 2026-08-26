@@ -75,27 +75,53 @@ export class ChainDO extends DurableObject<CloudflareBindings> {
   }
 
   /**
-   * Returns false when the node is unknown — after an eviction the in-memory
-   * state is gone while the gateway still holds the socket, so the gateway
-   * replays its cached system.connected and retries.
+   * Apply a batch of node messages, returning the node keys this object does
+   * not know.
+   *
+   * Batched rather than one call per message because every RPC is billed as
+   * its own request with no discount, while the frames feeding them are
+   * discounted 20:1 — one call per frame made ingest cost ~20x the sockets
+   * carrying it.
+   *
+   * An unknown key means this object was evicted while the gateway kept the
+   * socket; the gateway replays that node's cached system.connected and
+   * retries. Returned per entry rather than as one flag, so one forgotten node
+   * does not force a whole chain's batch to be replayed.
    */
-  async nodeMessage(nodeKey: string, msg: NodeMessage): Promise<boolean> {
-    if (this.chain === undefined || !this.chain.hasNode(nodeKey)) return false;
-    const id = this.chain.applyMessage(nodeKey, msg, Date.now());
-    // Runs even when the sender resolved to no id: a block can flip *other*
+  async nodeMessages(batch: Array<{ nodeKey: string; msg: NodeMessage }>): Promise<string[]> {
+    if (this.chain === undefined) return batch.map((entry) => entry.nodeKey);
+
+    const now = Date.now();
+    const unknown: string[] = [];
+    for (const { nodeKey, msg } of batch) {
+      if (!this.chain.hasNode(nodeKey)) {
+        unknown.push(nodeKey);
+        continue;
+      }
+      this.applyOne(nodeKey, msg, now);
+    }
+
+    // Runs even when no message resolved to an id: a block can flip *other*
     // nodes to stale.
     this.markWentStale();
-    if (id !== undefined) {
-      this.hub.markUpdated(id);
-      if (msg.msg === "afg.authority_set") {
-        this.recordValidator(this.chain.getById(id), msg.authorityId);
-      }
-      // The one session-fixed field that lands after connect, so the next
-      // delta has to carry the full row.
-      if (msg.msg === "sysinfo.hwbench") this.feed.reintroduce(id);
-    }
+    // Once for the whole batch, not per message — the batch is one update as
+    // far as browsers are concerned.
     this.feed.schedule(this.chain);
-    return true;
+    return unknown;
+  }
+
+  private applyOne(nodeKey: string, msg: NodeMessage, now: number): void {
+    if (this.chain === undefined) return;
+    const id = this.chain.applyMessage(nodeKey, msg, now);
+    if (id === undefined) return;
+
+    this.hub.markUpdated(id);
+    if (msg.msg === "afg.authority_set") {
+      this.recordValidator(this.chain.getById(id), msg.authorityId);
+    }
+    // The one session-fixed field that lands after connect, so the next
+    // delta has to carry the full row.
+    if (msg.msg === "sysinfo.hwbench") this.feed.reintroduce(id);
   }
 
   async connectionClosed(nodeKeyPrefix: string): Promise<void> {

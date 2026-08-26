@@ -6,6 +6,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { ChainState } from "../../src/domain/chain-state";
+import { IngestBatcher } from "../../src/gateway-do/ingest-batcher";
 import { MessageRouter } from "../../src/gateway-do/message-router";
 import { RouteTable } from "../../src/gateway-do/route-table";
 import type { ChainDirectory } from "../../src/gateway-do/chain-directory";
@@ -93,41 +94,49 @@ describe("chain isolation", () => {
     const routes = new RouteTable();
     const stubs = new Map<
       string,
-      { nodeConnected: ReturnType<typeof vi.fn>; nodeMessage: ReturnType<typeof vi.fn> }
+      { nodeConnected: ReturnType<typeof vi.fn>; nodeMessages: ReturnType<typeof vi.fn> }
     >();
     const chainStub = (genesisHash: string) => {
       if (!stubs.has(genesisHash)) {
         stubs.set(genesisHash, {
           nodeConnected: vi.fn(async () => {}),
-          nodeMessage: vi.fn(async () => true),
+          nodeMessages: vi.fn(async () => [] as string[]),
         });
       }
       return stubs.get(genesisHash)! as never;
     };
+    const batcher = new IngestBatcher(chainStub);
     return {
       routes,
       stubs,
+      batcher,
       instance: new MessageRouter({
         routes,
         directory: { record: vi.fn(), list: () => [] } as unknown as ChainDirectory,
         allowedChains: allowed,
         chainStub,
+        batcher,
         now: () => 1000,
       }),
     };
   }
 
   it("routes each node to its own chain, even on one socket", async () => {
-    const { instance, stubs } = router(new Set([CHAIN_A, CHAIN_B]));
+    const { instance, stubs, batcher } = router(new Set([CHAIN_A, CHAIN_B]));
     const conn = fakeConnection("1");
 
     await instance.route(conn, connected(1, CHAIN_A));
     await instance.route(conn, connected(2, CHAIN_B));
     await instance.route(conn, { msg: "system.interval", id: 1, peers: 7 });
+    await batcher.flushAll();
 
-    // The interval belongs to node 1, so only chain A may see it.
-    expect(stubs.get(CHAIN_A)!.nodeMessage).toHaveBeenCalledTimes(1);
-    expect(stubs.get(CHAIN_B)!.nodeMessage).not.toHaveBeenCalled();
+    // The interval belongs to node 1, so only chain A may see it. Batching
+    // must not pool two chains' messages into one call.
+    expect(stubs.get(CHAIN_A)!.nodeMessages).toHaveBeenCalledTimes(1);
+    expect(stubs.get(CHAIN_A)!.nodeMessages.mock.calls[0][0]).toEqual([
+      { nodeKey: "1:1", msg: { msg: "system.interval", id: 1, peers: 7 } },
+    ]);
+    expect(stubs.get(CHAIN_B)!.nodeMessages).not.toHaveBeenCalled();
   });
 
   it("a rejected chain never reaches a ChainDO", async () => {

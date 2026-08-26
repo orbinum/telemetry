@@ -14,6 +14,28 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Fixed
 
+- **Ingest paid a full billed request per node frame.** The gateway called
+  `nodeMessage` on a ChainDO once for every frame a node sent. Each RPC call is
+  billed as its own request, and unlike the WebSocket frames feeding them it
+  gets no 20:1 discount — so the hop between the two objects cost roughly
+  twenty times the sockets carrying the same traffic. At 500 nodes that is
+  ~1.000 RPCs/s into a single object.
+
+  Frames now accumulate per chain for 100 ms and travel in one `nodeMessages`
+  call, which collapses a chain's ingest to ~10 calls/s. The window matches the
+  feed's own flush interval, so nothing downstream can observe the delay.
+
+  `nodeMessages` returns the node keys the chain did not recognize rather than
+  a single flag. That keeps the eviction recovery per node: a ChainDO that was
+  evicted while the gateway held the socket forgets some nodes and not others,
+  and one forgotten node must not force a whole chain's batch to be replayed.
+
+  Batching lives in its own `IngestBatcher` rather than inside `MessageRouter`.
+  The router decides whether a message may be routed and where; the batcher
+  decides when it travels and how a failed delivery is retried. Keeping a timer
+  and a recovery loop out of the class that holds the ingest policy is what
+  lets both be tested without a WebSocket.
+
 - **The four gateway objects were billed around the clock.** `GatewayDO`
   accepted node sockets with a plain `accept()`, which bills wall-clock
   duration for as long as the socket is open — and node sockets are open
