@@ -6,7 +6,7 @@
     "build": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings --strict-vars=false",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.ports.json",
     "test": "vitest run",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

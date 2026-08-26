@@ -30,7 +30,7 @@ export function durableObjectRegistry(env: CloudflareBindings): ChainRegistry {
 
   return {
     gatewayFor: (clientIp: string) => gatewayPartition(fnv1a(clientIp) % GATEWAY_PARTITIONS),
-    gatewayPartition,
+    gateways: () => Array.from({ length: GATEWAY_PARTITIONS }, (_, i) => gatewayPartition(i)),
     chain: (genesisHash: string) => env.CHAIN.get(env.CHAIN.idFromName(genesisHash)),
   };
 }

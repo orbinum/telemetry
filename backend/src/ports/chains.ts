@@ -54,10 +54,16 @@ export interface Fetcher {
  * the URL, so its socket goes straight to the owner.
  */
 export interface ChainRegistry {
-  /** The gateway partition owning this client's sockets. */
+  /** The gateway owning this client's sockets. */
   gatewayFor(clientIp: string): Fetcher;
-  /** A gateway partition by index — used by the directory fan-in. */
-  gatewayPartition(index: number): Fetcher;
+  /**
+   * Every gateway, for the directory fan-in.
+   *
+   * A collection rather than an index, because how sockets are spread is the
+   * host's business: this deployment splits them across four objects, another
+   * might hold them all in one process. The caller only needs "ask them all".
+   */
+  gateways(): Fetcher[];
   /** The owner of one chain's state and feed sockets. */
   chain(genesisHash: string): Fetcher;
 }

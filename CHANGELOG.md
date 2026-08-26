@@ -12,6 +12,45 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+### Fixed
+
+- **A security test asserted nothing.** "Partitions by the edge-provided IP,
+  not by a client-supplied header" ended in
+  `expect(other).not.toBe(resolved)` — a reference comparison between two
+  arrays from separate setups, true unconditionally. The test passed whether
+  the gateway keyed on `CF-Connecting-IP` or on the `X-Forwarded-For` a client
+  can forge, which is the exact attack in its own title.
+
+  It now sends the same edge address twice with different forged headers and
+  asserts the partition does not move, plus a counterpart asserting different
+  addresses do land on different partitions — without which pinning every
+  client to one partition would also pass. Verified by making the resolver
+  trust `X-Forwarded-For`: the client relocates and the test fails.
+
+  The weak assertion predates this refactor.
+
+### Changed
+
+- **The routes no longer reach into the Cloudflare adapter.** `GET /chains`
+  imported `GATEWAY_PARTITIONS` to drive its fan-in loop, so a route knew both
+  that gateways are partitioned and how many there are. `ChainRegistry` now
+  answers `gateways()` with the collection; how sockets are spread is the
+  host's business, and a single-process host has one gateway rather than a
+  fake index.
+
+- **The ports' independence is checked rather than asserted.** `pnpm typecheck`
+  now also compiles `src/ports/` under `tsconfig.ports.json`, which supplies no
+  ambient types at all. An import that reaches a Cloudflare type fails the
+  build instead of quietly re-coupling the boundary. Confirmed by putting a
+  `D1Database` in a port: the build breaks.
+
+- **The eviction path that renumbers connections has tests.** `highestConnId`
+  had none: every test started with no sockets, so the resume-past-the-highest
+  logic never ran. It guards against a counter restarting at 1 and handing a
+  new socket the id of one still streaming — which silently replaces the older
+  node, since both build the same node keys. Now covered, including ids from
+  another gateway and ids that cannot be parsed.
+
 ### Changed
 
 - **The gateway's socket lifecycle is testable, and no directory is named

@@ -1,0 +1,19 @@
+{
+  // The ports describe what this service needs from a host. Compiling them
+  // with no ambient types is what proves that: `worker-configuration.d.ts` is
+  // absent here, so an import that reaches a Cloudflare type fails the build
+  // rather than passing unnoticed and quietly re-coupling the boundary.
+  //
+  // Run by `pnpm typecheck`, not by the editor's default project.
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "lib": ["esnext", "dom"],
+    "types": []
+  },
+  "include": ["src/ports/**/*.ts"]
+}

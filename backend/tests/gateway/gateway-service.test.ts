@@ -43,7 +43,7 @@ function intervalFrame(id: number): string {
 }
 
 /** Records every call a chain receives, in the order it arrives. */
-function setup(opts: { allowed?: string[] } = {}) {
+function setup(opts: { allowed?: string[]; existing?: Array<[OutboundSocket, string]> } = {}) {
   const calls: string[] = [];
   const sink: ChainSink = {
     nodeConnected: vi.fn(async (nodeKey: string) => {
@@ -80,6 +80,16 @@ function setup(opts: { allowed?: string[] } = {}) {
     close: (code, reason) => closed.push({ code, reason }),
   };
 
+  // Sockets a previous instance of this gateway left open, with the ids it
+  // had given them — what survives an eviction.
+  for (const [socket, id] of opts.existing ?? []) {
+    attachment.write(socket, {
+      id,
+      bytes: { buckets: [], latestBucket: 0, sum: 0 },
+      connected: [],
+    });
+  }
+
   const service = new GatewayService({
     clock: () => 1_000_000,
     directory,
@@ -87,7 +97,7 @@ function setup(opts: { allowed?: string[] } = {}) {
     attachment,
     allowedChains: new Set(opts.allowed ?? [GENESIS]),
     idPrefix: "gw",
-    existingSockets: [],
+    existingSockets: (opts.existing ?? []).map(([socket]) => socket),
   });
 
   return { service, socket, calls, sink, directory, closed };
@@ -208,5 +218,45 @@ describe("the directory", () => {
     const t = setup();
     t.service.listChains();
     expect(t.directory.prune).toHaveBeenCalled();
+  });
+});
+
+describe("resuming connection ids after an eviction", () => {
+  const other = (): OutboundSocket => ({ send: () => {}, close: () => {} });
+
+  it("resumes past the highest id still connected", async () => {
+    // The object died; these sockets did not. Restarting the counter at 1
+    // would hand a new socket the id of one still streaming, and since both
+    // build the same node keys, the older node would be silently replaced.
+    const survivor = other();
+    const t = setup({ existing: [[survivor, "gw-7"]] });
+
+    t.service.accept(t.socket, new Headers());
+    await t.service.handleFrame(t.socket, connectedFrame(1));
+
+    expect(t.calls).toContain("connected:gw-8:1");
+  });
+
+  it("ignores ids belonging to a different gateway", async () => {
+    // Another partition's sockets are not this one's to number past.
+    const foreign = other();
+    const t = setup({ existing: [[foreign, "elsewhere-99"]] });
+
+    t.service.accept(t.socket, new Headers());
+    await t.service.handleFrame(t.socket, connectedFrame(1));
+
+    expect(t.calls).toContain("connected:gw-1:1");
+  });
+
+  it("ignores an id whose number cannot be trusted", async () => {
+    // The attachment is only as good as the last write; an unparseable id is
+    // skipped rather than allowed to poison the counter.
+    const broken = other();
+    const t = setup({ existing: [[broken, "gw-not-a-number"]] });
+
+    t.service.accept(t.socket, new Headers());
+    await t.service.handleFrame(t.socket, connectedFrame(1));
+
+    expect(t.calls).toContain("connected:gw-1:1");
   });
 });
