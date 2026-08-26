@@ -12,78 +12,31 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-26
+
+### Fixed
+
+- **The history and session SQL was never executed by a test.** The doubles in
+  `tests/db` record the statements each function builds and assert on their
+  shape; nothing ever handed them to a parser, so a typo in the thirty-line CTE
+  behind `readHourlyHistory` would pass `pnpm test` and fail in production. The
+  file's own header admitted it and deferred the check to a manual step.
+
+  Those statements now also run against real SQLite, through a `D1Database`
+  double backed by `node:sqlite` and the schema in `migrations/`. Reading the
+  migrations from disk rather than restating the DDL means a migration the code
+  has not caught up with fails the suite instead of passing it.
+
+  The recording doubles stay. They pin intent — that a write is an upsert on
+  the bucket key, that a departure goes out as one batch — which executing the
+  SQL cannot show. The new tests pin effect.
+
+  Two behaviours had no coverage at all and now do: that `readHourlyHistory`
+  aggregates raw minute buckets exactly as `pruneHistory` rolls them up, a
+  contract that previously lived only in a comment, and that `pruneHistory` is
+  one transaction, so a rollup can never commit without its prune.
+
 ### Changed
-
-- **The gateway no longer imports the chain's implementation to describe a
-  handle to it.** `MessageRouter` and `IngestBatcher` typed their chain handle
-  as a stub parameterised by the `ChainDO` class, so two files whose whole
-  purpose is to be independent of it named it anyway. They now depend on
-  `ChainSink`: the three calls the gateway actually makes.
-
-  The coupling was compile-time only and nothing behaved differently, but it
-  pointed the dependency the wrong way — the side that routes messages knew the
-  type of the side that receives them. Production wiring did not change: the
-  real stub satisfies the interface structurally.
-
-  The test doubles lose their casts through `never` and gain the port's own
-  signatures, so a mock that no longer matches what a chain accepts now fails
-  to compile instead of failing at runtime.
-
-- **Sockets are what the code writes to, not what the runtime hands it.** The
-  broadcaster and the node connection take an `OutboundSocket` — two methods,
-  `send` and `close`, which is all either ever used — instead of the full
-  WebSocket. Hibernation attachments move behind `SocketAttachment`, so
-  `NodeConnection` no longer calls `serializeAttachment` itself.
-
-  The narrowing shows up first in the tests: a socket double is now an object
-  literal rather than a cast through `unknown`, and the attachment is a value
-  the test holds rather than something bolted onto a fake socket. It still
-  round-trips through JSON, which is stricter than the structured clone the
-  runtime performs.
-
-  The byte budget keeps the property that matters: it survives an eviction, so
-  a client cannot reset its own rate limit by making the object drop.
-
-- **The chain directory is a store the gateway asks, not a table it owns.**
-  `MessageRouter` and the gateway now depend on `ChainDirectoryStore`; only the
-  adapter behind it knows there is SQLite involved. `SqlStorage` no longer
-  appears anywhere in `src/` outside `adapters/`.
-
-  `GET /chains` stops importing a row type constrained by `SqlStorageValue` to
-  describe its own JSON. What the route wanted was a listing; what it had was
-  the shape of a database row, and the two were the same only by coincidence.
-
-  The port is deliberately synchronous. The store is process-local in every
-  target — a Durable Object's SQLite lives in the isolate, and a single-process
-  host would use a Map — so there is nothing to await, while `touchChain` runs
-  on every routed message and would become a floating promise.
-
-  Its tests now run twice: once against the SQLite adapter the worker deploys,
-  once against a Map written in the test file. Two implementations answering
-  identically is the evidence that the port describes behaviour and not one
-  driver. The hand-written fake that string-matched each query and
-  reimplemented it is gone — it could only ever prove its own SQL.
-
-- **Storage reaches the code as a repository rather than a database.**
-  `ChainDO`, the two history routes and the nightly cron took a `D1Database`
-  and called free functions on it; they now hold a `HistoryRepository` or a
-  `SessionRepository` and cannot tell what is behind it. `D1Database` no longer
-  appears anywhere in `src/` outside the adapter and the module holding the
-  SQL.
-
-  The statements did not move and were not rewritten — the adapters bind a
-  database to the existing functions and nothing else, which is what makes the
-  change reviewable and what lets the SQL tests keep proving the same
-  behaviour.
-
-  `ChainDO` builds its repositories once in the constructor instead of reading
-  the binding in each of the six best-effort writes. The question every one of
-  those repeated — is there a database at all — is now asked once, and the
-  answer is a field that is either there or not.
-
-  Retention windows moved to `config/limits.ts`, alongside the other policy
-  constants. How long the service promises to remember something is not a
-  property of the database that happens to hold it.
 
 - **The contract with the hosting platform is now written down.** `src/ports/`
   holds the interfaces the code needs from wherever it runs: a clock, deferred
@@ -108,27 +61,76 @@ a whole: the worker and the UI compile the same wire contract from
   chain that used to enforce it by hand could be deleted; a host whose socket
   library does not await its handler has to put that chain back.
 
-### Fixed
+- **Storage reaches the code as a repository rather than a database.**
+  `ChainDO`, the two history routes and the nightly cron took a `D1Database`
+  and called free functions on it; they now hold a `HistoryRepository` or a
+  `SessionRepository` and cannot tell what is behind it. `D1Database` no longer
+  appears anywhere in `src/` outside the adapter and the module holding the
+  SQL.
 
-- **The history and session SQL was never executed by a test.** The doubles in
-  `tests/db` record the statements each function builds and assert on their
-  shape; nothing ever handed them to a parser, so a typo in the thirty-line CTE
-  behind `readHourlyHistory` would pass `pnpm test` and fail in production. The
-  file's own header admitted it and deferred the check to a manual step.
+  The statements did not move and were not rewritten — the adapters bind a
+  database to the existing functions and nothing else, which is what makes the
+  change reviewable and what lets the SQL tests keep proving the same
+  behaviour.
 
-  Those statements now also run against real SQLite, through a `D1Database`
-  double backed by `node:sqlite` and the schema in `migrations/`. Reading the
-  migrations from disk rather than restating the DDL means a migration the code
-  has not caught up with fails the suite instead of passing it.
+  `ChainDO` builds its repositories once in the constructor instead of reading
+  the binding in each of the six best-effort writes. The question every one of
+  those repeated — is there a database at all — is now asked once, and the
+  answer is a field that is either there or not.
 
-  The recording doubles stay. They pin intent — that a write is an upsert on
-  the bucket key, that a departure goes out as one batch — which executing the
-  SQL cannot show. The new tests pin effect.
+  Retention windows moved to `config/limits.ts`, alongside the other policy
+  constants. How long the service promises to remember something is not a
+  property of the database that happens to hold it.
 
-  Two behaviours had no coverage at all and now do: that `readHourlyHistory`
-  aggregates raw minute buckets exactly as `pruneHistory` rolls them up, a
-  contract that previously lived only in a comment, and that `pruneHistory` is
-  one transaction, so a rollup can never commit without its prune.
+- **The chain directory is a store the gateway asks, not a table it owns.**
+  `MessageRouter` and the gateway now depend on `ChainDirectoryStore`; only the
+  adapter behind it knows there is SQLite involved. `SqlStorage` no longer
+  appears anywhere in `src/` outside `adapters/`.
+
+  `GET /chains` stops importing a row type constrained by `SqlStorageValue` to
+  describe its own JSON. What the route wanted was a listing; what it had was
+  the shape of a database row, and the two were the same only by coincidence.
+
+  The port is deliberately synchronous. The store is process-local in every
+  target — a Durable Object's SQLite lives in the isolate, and a single-process
+  host would use a Map — so there is nothing to await, while `touchChain` runs
+  on every routed message and would become a floating promise.
+
+  Its tests now run twice: once against the SQLite adapter the worker deploys,
+  once against a Map written in the test file. Two implementations answering
+  identically is the evidence that the port describes behaviour and not one
+  driver. The hand-written fake that string-matched each query and
+  reimplemented it is gone — it could only ever prove its own SQL.
+
+- **Sockets are what the code writes to, not what the runtime hands it.** The
+  broadcaster and the node connection take an `OutboundSocket` — two methods,
+  `send` and `close`, which is all either ever used — instead of the full
+  WebSocket. Hibernation attachments move behind `SocketAttachment`, so
+  `NodeConnection` no longer calls `serializeAttachment` itself.
+
+  The narrowing shows up first in the tests: a socket double is now an object
+  literal rather than a cast through `unknown`, and the attachment is a value
+  the test holds rather than something bolted onto a fake socket. It still
+  round-trips through JSON, which is stricter than the structured clone the
+  runtime performs.
+
+  The byte budget keeps the property that matters: it survives an eviction, so
+  a client cannot reset its own rate limit by making the object drop.
+
+- **The gateway no longer imports the chain's implementation to describe a
+  handle to it.** `MessageRouter` and `IngestBatcher` typed their chain handle
+  as a stub parameterised by the `ChainDO` class, so two files whose whole
+  purpose is to be independent of it named it anyway. They now depend on
+  `ChainSink`: the three calls the gateway actually makes.
+
+  The coupling was compile-time only and nothing behaved differently, but it
+  pointed the dependency the wrong way — the side that routes messages knew the
+  type of the side that receives them. Production wiring did not change: the
+  real stub satisfies the interface structurally.
+
+  The test doubles lose their casts through `never` and gain the port's own
+  signatures, so a mock that no longer matches what a chain accepts now fails
+  to compile instead of failing at runtime.
 
 ## [0.6.2] - 2026-08-26
 
@@ -929,7 +931,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/orbinum/telemetry/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/orbinum/telemetry/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/orbinum/telemetry/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/orbinum/telemetry/compare/v0.5.0...v0.6.0
