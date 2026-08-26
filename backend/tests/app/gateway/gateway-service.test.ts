@@ -43,7 +43,13 @@ function intervalFrame(id: number): string {
 }
 
 /** Records every call a chain receives, in the order it arrives. */
-function setup(opts: { allowed?: string[]; existing?: Array<[OutboundSocket, string]> } = {}) {
+function setup(
+  opts: {
+    allowed?: string[];
+    existing?: Array<[OutboundSocket, string]>;
+    directory?: ChainDirectoryStore;
+  } = {},
+) {
   const calls: string[] = [];
   const sink: ChainSink = {
     nodeConnected: vi.fn(async (nodeKey: string) => {
@@ -67,12 +73,14 @@ function setup(opts: { allowed?: string[]; existing?: Array<[OutboundSocket, str
     write: (socket, state) => held.set(socket, JSON.stringify(state)),
   };
 
-  const directory = {
-    record: vi.fn(),
-    touch: vi.fn(),
-    list: vi.fn(() => []),
-    prune: vi.fn(),
-  } as unknown as ChainDirectoryStore;
+  const directory =
+    opts.directory ??
+    ({
+      record: vi.fn(),
+      touch: vi.fn(),
+      list: vi.fn(() => []),
+      prune: vi.fn(),
+    } as unknown as ChainDirectoryStore);
 
   const closed: Array<{ code: number; reason: string }> = [];
   const socket: OutboundSocket = {
@@ -214,10 +222,28 @@ describe("frames the gateway refuses", () => {
 });
 
 describe("the directory", () => {
-  it("prunes on read, so it stays bounded without a timer", () => {
-    const t = setup();
-    t.service.listChains();
-    expect(t.directory.prune).toHaveBeenCalled();
+  it("prunes before listing, so the answer never includes what it just dropped", () => {
+    const order: string[] = [];
+    const listing = [{ genesis: GENESIS, label: "Orbinum", updated: 1_000_000 }];
+    const directory = {
+      record: vi.fn(),
+      touch: vi.fn(),
+      prune: vi.fn(() => order.push("prune")),
+      list: vi.fn(() => {
+        order.push("list");
+        return listing;
+      }),
+    } as unknown as ChainDirectoryStore;
+    const t = setup({ directory });
+
+    const answer = t.service.listChains();
+
+    // Both the order and the passthrough matter: pruning after listing would
+    // return rows already expired, and a hardcoded answer would satisfy a test
+    // that only checked prune was called.
+    expect(order).toEqual(["prune", "list"]);
+    expect(answer).toBe(listing);
+    expect(vi.mocked(directory.prune).mock.calls[0][0]).toBe(1_000_000);
   });
 });
 

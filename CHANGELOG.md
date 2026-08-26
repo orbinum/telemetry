@@ -12,6 +12,41 @@ a whole: the worker and the UI compile the same wire contract from
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-08-26
+
+### Fixed
+
+- **Two public endpoints had no tests, and two others asserted too little.**
+  `/history` and `/uptime` are reachable from the internet and take a path
+  parameter plus two query strings into a database read — 166 lines of
+  validation with nothing checking it. Both are now covered: malformed chain
+  hashes, unknown windows, a `?node=` that is not a PeerId, the rollup switch
+  that decides whether a month comes back as ~720 points or ~43,200, and the
+  503-rather-than-500 that a contended D1 produces.
+
+  Verified by breaking each: without the PeerId check four tests fail, without
+  the rollup switch one does.
+
+  The D1 repositories were untested too. They are thin, but
+  `closeOrphans(genesis, liveConnectedAt, fallback)` takes two numeric
+  arguments that type-check in either position — transposing them would leave
+  every statement valid while sparing the wrong session and closing the live
+  one. Confirmed the new test catches exactly that.
+
+  The hibernation attachment gained tests too. It is four lines, but they sit
+  on the eviction path: everything a node connection knows travels through it
+  while the object is not resident, and its one piece of logic — translating
+  the `null` the runtime returns for an unattached socket into `undefined` — is
+  what makes `fromSocket` treat a stranger's socket as a stranger rather than
+  rebuilding a connection from nothing.
+
+  Two existing assertions were weaker than they read. `prune` was asserted to
+  have "been called" — true even if the directory returned a hardcoded answer —
+  and now pins the order against `list` and the passthrough of its result. And
+  the fan-in test gave every partition the *same* chain, so the merge collapsed
+  them and one surviving partition looked identical to four; each now reports a
+  distinct chain, which fails if the fan-in drops any of them.
+
 ## [0.6.5] - 2026-08-26
 
 ### Changed
@@ -1060,7 +1095,8 @@ second stack to operate.
   and then silently receives nothing — the node reconnects forever and the only
   symptom is an empty list.
 
-[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.6.5...HEAD
+[Unreleased]: https://github.com/orbinum/telemetry/compare/v0.6.6...HEAD
+[0.6.6]: https://github.com/orbinum/telemetry/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/orbinum/telemetry/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/orbinum/telemetry/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/orbinum/telemetry/compare/v0.6.2...v0.6.3
