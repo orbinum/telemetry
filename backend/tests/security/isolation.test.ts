@@ -5,13 +5,13 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { ChainState } from "../../src/domain/chain-state";
-import { IngestBatcher } from "../../src/gateway/ingest-batcher";
-import { MessageRouter } from "../../src/gateway/message-router";
-import { RouteTable } from "../../src/gateway/route-table";
-import type { ChainDirectoryStore } from "../../src/ports/directory";
-import type { NodeConnection } from "../../src/gateway/connection";
-import type { SystemConnectedMessage } from "../../src/protocol/node";
+import { ChainState } from "../../src/core/domain/chain-state";
+import { IngestBatcher } from "../../src/app/gateway/ingest-batcher";
+import { MessageRouter } from "../../src/app/gateway/message-router";
+import { RouteTable } from "../../src/app/gateway/route-table";
+import type { ChainDirectoryStore } from "../../src/app/ports/directory";
+import type { NodeConnection } from "../../src/app/gateway/connection";
+import type { SystemConnectedMessage } from "../../src/core/protocol/node";
 import { peerId } from "../fixtures/peer-id";
 
 const CHAIN_A = "0x" + "aa".repeat(32);

@@ -34,40 +34,50 @@ node ──ws──> Worker ──> GatewayDO ──rpc──> ChainDO ──ws�
                          limits)            feed fanout)
 ```
 
+```
+src/
+  core/        Pure. Does not know a network exists.
+  app/         Orchestration. Speaks ports, never the platform.
+  platform/    The only place that names Cloudflare.
+  index.ts     Entry point: Hono router + cron.
+```
+
 | Directory              | Holds                                                               |
 | ---------------------- | ------------------------------------------------------------------- |
-| `protocol/`            | Parser for the node wire format. Pure; one file per message variant |
-| `domain/`              | Node and chain state, propagation, bounded series. Pure, no I/O     |
-| `gateway/`             | Node sockets, ingest policy, batching, chain directory access       |
-| `chain/`               | Per-chain state owner, feed batching and fanout                     |
-| `feed/`                | Domain → wire serialization for browsers                            |
-| `ports/`               | What the code needs from its host, as interfaces                    |
-| `adapters/cloudflare/` | The only place that names Cloudflare — the DO shells included       |
-| `db/`                  | The history and session SQL — the only place that writes statements |
-| `routes/`              | HTTP handlers; they route and validate, never parse telemetry       |
-| `middleware/`          | CORS                                                                |
-| `config/`              | Allowlist, limits and retention                                     |
+| `core/protocol/`       | Parser for the node wire format. One file per message variant       |
+| `core/domain/`         | Node and chain state, propagation, bounded series. No I/O           |
+| `core/feed/`           | Domain → wire serialization for browsers                            |
+| `core/config/`         | Allowlist, limits and retention                                     |
+| `app/ports/`           | What the code needs from its host, as interfaces                    |
+| `app/chain/`           | Per-chain state owner, feed batching and fanout                     |
+| `app/gateway/`         | Node sockets, ingest policy, batching, chain directory access       |
+| `app/http/`            | Route handlers and CORS; they validate, never parse telemetry       |
+| `platform/cloudflare/` | Durable Object shells, D1, bindings, composition                    |
+| `platform/…/sql/`      | The history and session statements — the only place that writes SQL |
 
-`tests/` mirrors `src/`, plus `tests/security/` for adversarial input. 371
-tests total; run them with `pnpm test`.
+The nesting is the layering: a directory may import from the layers above it,
+never below. `core/` naming anything from `app/` or `platform/` is an
+architecture error, and the `../../` in the import is what makes it visible in
+a diff. `tests/` mirrors `src/`, plus `tests/security/` for adversarial input
+and `tests/support/` for harnesses. 371 tests total; run them with `pnpm test`.
 
 ### Ports and adapters
 
-The platform is reachable through one directory. `ports/` names what this
+The platform is reachable through one directory. `app/ports/` names what this
 service needs from wherever it runs — a clock, deferred work, one alarm, two
 repositories, a chain directory, sockets, how a chain is reached, and what the
-edge provides — and `adapters/cloudflare/` is the only implementation.
+edge provides — and `platform/cloudflare/` is the only implementation.
 
 That boundary is checked rather than asserted: `pnpm typecheck` also compiles
-`ports/` under `tsconfig.ports.json`, which supplies no ambient types at all,
-so an import that reaches a Cloudflare type fails the build.
+`app/ports/` under `tsconfig.ports.json`, which supplies no ambient types at
+all, so an import that reaches a Cloudflare type fails the build.
 
 `ChainDO` and `GatewayDO` are shells. They build the Cloudflare-shaped pieces
 and forward to a `ChainService` and a `GatewayService` that name no platform
 type — which is what lets the reaper's ordering and the gateway's socket
 lifecycle be tested without a Durable Object to construct.
 
-One thing no interface can enforce is written down in `ports/transport.ts`: an
+One thing no interface can enforce is written down in `app/ports/transport.ts`: an
 adapter must not deliver a frame for a socket while that socket's previous
 frame is still being handled. Cloudflare provides it by awaiting the handler,
 which is why the promise chain that used to enforce it by hand could be

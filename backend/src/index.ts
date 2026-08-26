@@ -8,20 +8,20 @@
  */
 
 import { Hono } from "hono";
-import { D1HistoryRepository } from "./adapters/cloudflare/d1-history-repository";
-import { D1SessionRepository } from "./adapters/cloudflare/d1-session-repository";
-import { buildDeps } from "./adapters/cloudflare/composition";
-import { SESSION_RETENTION_MS } from "./config/limits";
-import type { AppEnv } from "./app-env";
-import { corsMiddleware } from "./middleware/cors";
-import { chains } from "./routes/chains";
-import { feed } from "./routes/feed";
-import { history } from "./routes/history";
-import { submit } from "./routes/submit";
-import { uptime } from "./routes/uptime";
+import { D1HistoryRepository } from "./platform/cloudflare/d1-history-repository";
+import { D1SessionRepository } from "./platform/cloudflare/d1-session-repository";
+import { buildDeps } from "./platform/cloudflare/composition";
+import { SESSION_RETENTION_MS } from "./core/config/limits";
+import type { AppEnv } from "./app/http/app-env";
+import { corsMiddleware } from "./app/http/cors";
+import { chains } from "./app/http/chains";
+import { feed } from "./app/http/feed";
+import { history } from "./app/http/history";
+import { submit } from "./app/http/submit";
+import { uptime } from "./app/http/uptime";
 
-export { ChainDO } from "./adapters/cloudflare/chain-do";
-export { GatewayDO } from "./adapters/cloudflare/gateway-do";
+export { ChainDO } from "./platform/cloudflare/chain-do";
+export { GatewayDO } from "./platform/cloudflare/gateway-do";
 
 const app = new Hono<AppEnv>();
 

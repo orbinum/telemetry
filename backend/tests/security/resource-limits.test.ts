@@ -11,13 +11,13 @@ import {
   BYTE_BUDGET_BYTES,
   BYTE_BUDGET_WINDOW_MS,
   MAX_NODES_PER_CONNECTION,
-} from "../../src/config/limits";
-import { ChainState } from "../../src/domain/chain-state";
-import { MeanList } from "../../src/domain/mean-list";
-import { NodeTable } from "../../src/domain/node-table";
-import { RollingTotal } from "../../src/domain/rolling-total";
-import { RouteTable } from "../../src/gateway/route-table";
-import type { SystemConnectedMessage } from "../../src/protocol/node";
+} from "../../src/core/config/limits";
+import { ChainState } from "../../src/core/domain/chain-state";
+import { MeanList } from "../../src/core/domain/mean-list";
+import { NodeTable } from "../../src/core/domain/node-table";
+import { RollingTotal } from "../../src/core/domain/rolling-total";
+import { RouteTable } from "../../src/app/gateway/route-table";
+import type { SystemConnectedMessage } from "../../src/core/protocol/node";
 import { peerId } from "../fixtures/peer-id";
 
 const GENESIS = "0x" + "ab".repeat(32);
