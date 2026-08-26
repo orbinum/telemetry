@@ -8,16 +8,19 @@
  */
 
 import type { Context } from "hono";
-import { GATEWAY_PARTITIONS, gatewayPartitionStub } from "../services/do-registry";
+import type { AppEnv } from "../app-env";
+import { GATEWAY_PARTITIONS } from "../adapters/cloudflare/chain-registry";
 import type { ChainDirectoryEntry } from "../../../shared/protocol/feed";
 import type { ChainListing } from "../ports/directory";
 
-export async function chains(c: Context<{ Bindings: CloudflareBindings }>): Promise<Response> {
+export async function chains(c: Context<AppEnv>): Promise<Response> {
+  const { registry } = c.get("deps");
   const partitions = await Promise.all(
     Array.from({ length: GATEWAY_PARTITIONS }, (_, i) =>
-      gatewayPartitionStub(c.env, i)
+      registry
+        .gatewayPartition(i)
         .fetch(new Request("https://do/chains"))
-        .then((res) => res.json<ChainListing[]>())
+        .then((res) => res.json() as Promise<ChainListing[]>)
         .catch(() => [] as ChainListing[]),
     ),
   );

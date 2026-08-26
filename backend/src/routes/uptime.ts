@@ -12,8 +12,7 @@
  */
 
 import type { Context } from "hono";
-import { D1SessionRepository } from "../adapters/cloudflare/d1-session-repository";
-import { allowRequest, clientIp } from "../middleware/rate-limit";
+import type { AppEnv } from "../app-env";
 
 const GENESIS_RE = /^0x[0-9a-f]{64}$/;
 const PEER_ID_RE = /^[1-9A-HJ-NP-Za-km-z]{46,64}$/;
@@ -26,7 +25,7 @@ const WINDOWS: Record<string, number> = {
 
 const DEFAULT_WINDOW = "24h";
 
-export async function uptime(c: Context<{ Bindings: CloudflareBindings }>): Promise<Response> {
+export async function uptime(c: Context<AppEnv>): Promise<Response> {
   const genesisHash = c.req.param("genesisHash")?.toLowerCase();
   if (genesisHash === undefined || !GENESIS_RE.test(genesisHash)) {
     return Response.json({ error: "expected /uptime/0x<genesis hash>" }, { status: 400 });
@@ -47,14 +46,15 @@ export async function uptime(c: Context<{ Bindings: CloudflareBindings }>): Prom
     return Response.json({ error: "node must be a PeerId" }, { status: 400 });
   }
 
-  if (!(await allowRequest(c.env.HISTORY_LIMITER, clientIp(c.req.raw)))) {
+  const deps = c.get("deps");
+  if (!(await deps.limiters.history.allow(deps.geo.clientIp(c.req.raw)))) {
     return Response.json({ error: "too many requests" }, { status: 429 });
   }
 
-  if (c.env.DB === undefined) {
+  const sessions = deps.sessions;
+  if (sessions === undefined) {
     return Response.json({ error: "uptime is not configured" }, { status: 503 });
   }
-  const sessions = new D1SessionRepository(c.env.DB);
 
   const now = Date.now();
   const from = now - windowMs;

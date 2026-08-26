@@ -11,8 +11,7 @@
  */
 
 import type { Context } from "hono";
-import { D1HistoryRepository } from "../adapters/cloudflare/d1-history-repository";
-import { allowRequest, clientIp } from "../middleware/rate-limit";
+import type { AppEnv } from "../app-env";
 
 const GENESIS_RE = /^0x[0-9a-f]{64}$/;
 
@@ -30,7 +29,7 @@ const DEFAULT_WINDOW = "24h";
 /** Past this width, 60s points are more than a chart can use — roll up. */
 const HOURLY_THRESHOLD_MS = 48 * 60 * 60 * 1000;
 
-export async function history(c: Context<{ Bindings: CloudflareBindings }>): Promise<Response> {
+export async function history(c: Context<AppEnv>): Promise<Response> {
   const genesisHash = c.req.param("genesisHash")?.toLowerCase();
   if (genesisHash === undefined || !GENESIS_RE.test(genesisHash)) {
     return Response.json({ error: "expected /history/0x<genesis hash>" }, { status: 400 });
@@ -45,14 +44,15 @@ export async function history(c: Context<{ Bindings: CloudflareBindings }>): Pro
     );
   }
 
-  if (!(await allowRequest(c.env.HISTORY_LIMITER, clientIp(c.req.raw)))) {
+  const deps = c.get("deps");
+  if (!(await deps.limiters.history.allow(deps.geo.clientIp(c.req.raw)))) {
     return Response.json({ error: "too many requests" }, { status: 429 });
   }
 
-  if (c.env.DB === undefined) {
+  const history = deps.history;
+  if (history === undefined) {
     return Response.json({ error: "history is not configured" }, { status: 503 });
   }
-  const history = new D1HistoryRepository(c.env.DB);
 
   const from = Date.now() - windowMs;
   const hourly = windowMs > HOURLY_THRESHOLD_MS;

@@ -14,6 +14,28 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Changed
 
+- **No route reads the environment any more.** The five handlers took a
+  `CloudflareBindings` and pulled a limiter, a database and a Durable Object
+  namespace out of it; they now receive ports, put there once per request by a
+  single composition root. `c.env` appears nowhere under `routes/`.
+
+  That root is the one file which knows a rate limiter is a binding and a chain
+  is a Durable Object. Hosting this service elsewhere means writing another one
+  of these, rather than editing five handlers that each learned the platform
+  independently.
+
+  Geolocation split along the line it always had: extracting a location from
+  what the edge attached is the adapter's job, while the header that carries it
+  to the object holding the socket is the wire format between two halves of the
+  same deployment and stays with them. The extraction gained tests it never had
+  — those fields arrive typed as unknown, and a coordinate that is not a number
+  must leave the column empty rather than plot a node at the equator.
+
+  The route security tests keep their teeth: they build the real registry over
+  fake namespaces rather than faking the registry, because which partition a
+  client lands on is derived from its address, and replacing that would have
+  faked away the isolation being asserted.
+
 - **A chain's orchestration is testable.** `ChainDO` was 361 lines of a class
   that cannot be constructed outside a Durable Object, so the ordering its
   comments describe — reap, then sweep, then close sessions, then write the

@@ -33,7 +33,7 @@ import type { NodeConnectionState } from "./connection";
 import type { OutboundSocket, SocketAttachment } from "../ports/transport";
 import { parseAllowedChains } from "../config/chains";
 import { CLOSE_BYTE_BUDGET } from "../config/limits";
-import { parseGeoHeader } from "../middleware/geo";
+import { parseGeoHeader } from "./geo-header";
 import { parseNodeMessage, peekMessageName } from "../protocol/node";
 import type { ChainDO } from "../chain-do";
 
