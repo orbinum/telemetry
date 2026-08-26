@@ -2,7 +2,7 @@
  * MessageRouter — decides what happens to one parsed node message.
  *
  * This is where the ingest policy lives: which chains are accepted, how many
- * nodes a socket may claim, which ChainDO receives what, and how long a chain
+ * nodes a socket may claim, which chain receives what, and how long a chain
  * stays listed in the directory. The DO around it only owns sockets;
  * everything with a rule in it is here, which is also what makes the rules
  * testable without a WebSocket.
@@ -14,21 +14,20 @@ import {
   CLOSE_TOO_MANY_NODES,
   MAX_NODES_PER_CONNECTION,
 } from "../config/limits";
+import type { ChainSinkResolver } from "../ports/chains";
 import type { ChainDirectoryStore } from "../ports/directory";
 import type { IngestBatcher } from "./ingest-batcher";
 import type { NodeConnection } from "./connection";
 import type { RouteTable } from "./route-table";
-import type { ChainDO } from "../chain-do";
 import type { NodeMessage } from "../protocol/node";
 
-/** Resolves the stub for a chain — injected so tests need no DO namespace. */
-export type ChainStubResolver = (genesisHash: string) => DurableObjectStub<ChainDO>;
+export type { ChainSinkResolver } from "../ports/chains";
 
 export interface MessageRouterDeps {
   routes: RouteTable;
   directory: ChainDirectoryStore;
   allowedChains: Set<string>;
-  chainStub: ChainStubResolver;
+  chainStub: ChainSinkResolver;
   batcher: IngestBatcher;
   now: () => number;
 }

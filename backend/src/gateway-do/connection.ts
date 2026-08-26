@@ -5,17 +5,18 @@
  * system.connected used to recover from a ChainDO eviction. Keeping this out of
  * the DO leaves the gateway to do only routing.
  *
- * The state lives in a WebSocket attachment rather than a field on the DO,
- * because the gateway uses the hibernation API: the object is evicted while
- * node sockets stay open, and anything held only in memory would come back
- * empty. That matters most for the byte budget — a client that could drop the
- * object at will would otherwise reset its own rate limit.
+ * The state travels through a `SocketAttachment` rather than a field on the
+ * object holding the socket, because that object can be evicted while the
+ * socket stays open, and anything held only in memory would come back empty.
+ * That matters most for the byte budget — a client able to drop the object at
+ * will would otherwise reset its own rate limit.
  */
 
 import { BYTE_BUDGET_BYTES, BYTE_BUDGET_WINDOW_MS } from "../config/limits";
 import { RollingTotal } from "../domain/rolling-total";
 import type { RollingTotalState } from "../domain/rolling-total";
 import type { NodeGeo } from "../domain/node-state";
+import type { OutboundSocket, SocketAttachment } from "../ports/transport";
 import type { SystemConnectedMessage } from "../protocol/node";
 
 /** What survives an eviction, as stored in the socket's attachment. */
@@ -40,7 +41,7 @@ export class NodeConnection {
    */
   readonly id: string;
   readonly geo?: NodeGeo;
-  private readonly socket: WebSocket;
+  private readonly socket: OutboundSocket;
   private readonly bytes = new RollingTotal(BYTE_BUDGET_WINDOW_MS);
 
   /**
@@ -52,7 +53,7 @@ export class NodeConnection {
 
   private closed = false;
 
-  constructor(id: string, socket: WebSocket, geo: NodeGeo | undefined) {
+  constructor(id: string, socket: OutboundSocket, geo: NodeGeo | undefined) {
     this.id = id;
     this.socket = socket;
     this.geo = geo;
@@ -65,9 +66,12 @@ export class NodeConnection {
    * for a socket the gateway never attached state to, which is the one case
    * that must not be treated as a live connection.
    */
-  static fromSocket(socket: WebSocket): NodeConnection | undefined {
-    const state = socket.deserializeAttachment() as NodeConnectionState | null;
-    if (state === null || typeof state !== "object") return undefined;
+  static fromSocket(
+    socket: OutboundSocket,
+    attachment: SocketAttachment<NodeConnectionState>,
+  ): NodeConnection | undefined {
+    const state = attachment.read(socket);
+    if (state === undefined || typeof state !== "object") return undefined;
 
     const conn = new NodeConnection(state.id, socket, state.geo);
     conn.bytes.restore(state.bytes);
@@ -82,14 +86,13 @@ export class NodeConnection {
    * announced, so state that is not written by the end of the handler is state
    * that can be lost.
    */
-  persist(): void {
-    const state: NodeConnectionState = {
+  persist(attachment: SocketAttachment<NodeConnectionState>): void {
+    attachment.write(this.socket, {
       id: this.id,
       geo: this.geo,
       bytes: this.bytes.toJSON(),
       connected: [...this.connectedCache],
-    };
-    this.socket.serializeAttachment(state);
+    });
   }
 
   /** Key that identifies one node: unique per (connection, envelope id). */

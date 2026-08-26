@@ -11,6 +11,7 @@ import { toFeedChain, toFeedNode, toFeedNodeSeries } from "../feed/serialize";
 import type { FeedMessage } from "../../../shared/protocol/feed";
 import type { ChainState } from "../domain/chain-state";
 import type { FeedHub } from "../feed/hub";
+import type { OutboundSocket, SocketSource } from "../ports/transport";
 
 /** Feed batching window (plan §5: 100 ms halves messages vs the reference's 75). */
 const FLUSH_INTERVAL_MS = 100;
@@ -25,8 +26,7 @@ const INIT_CHUNK_SIZE = 100;
  */
 const SERIES_INTERVAL_MS = 5_000;
 
-/** Supplies the live sockets — `ctx.getWebSockets()` in production. */
-export type SocketSource = () => WebSocket[];
+export type { SocketSource } from "../ports/transport";
 
 export class FeedBroadcaster {
   private readonly hub: FeedHub;
@@ -55,7 +55,7 @@ export class FeedBroadcaster {
    * A chain that does not exist yet still gets a done-init, so the UI can
    * tell "connected and empty" from "still loading".
    */
-  sendSnapshot(socket: WebSocket, chain: ChainState | undefined, now: number): void {
+  sendSnapshot(socket: OutboundSocket, chain: ChainState | undefined, now: number): void {
     if (chain === undefined) {
       this.send(socket, {
         t: "init",
@@ -177,11 +177,11 @@ export class FeedBroadcaster {
     }
   }
 
-  private send(socket: WebSocket, msg: FeedMessage): void {
+  private send(socket: OutboundSocket, msg: FeedMessage): void {
     this.sendRaw(socket, JSON.stringify(msg));
   }
 
-  private sendRaw(socket: WebSocket, frame: string): void {
+  private sendRaw(socket: OutboundSocket, frame: string): void {
     try {
       socket.send(frame);
     } catch {

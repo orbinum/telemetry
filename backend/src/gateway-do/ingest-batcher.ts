@@ -1,6 +1,6 @@
 /**
  * IngestBatcher — accumulates node messages per chain and ships them in one
- * RPC, recovering the ones a ChainDO no longer recognizes.
+ * call, recovering the ones a chain no longer recognizes.
  *
  * Exists because every RPC call is billed as its own request while the
  * WebSocket frames feeding them are discounted 20:1 — one call per frame made
@@ -13,12 +13,12 @@
  * loop inside the class that holds the ingest policy.
  */
 
-import type { ChainStubResolver } from "./message-router";
+import type { ChainSink, ChainSinkResolver } from "../ports/chains";
 import type { NodeConnection } from "./connection";
 import type { NodeMessage } from "../protocol/node";
 
 /**
- * How long node messages accumulate before one RPC carries them to a ChainDO.
+ * How long node messages accumulate before one call carries them to a chain.
  * Matches the feed's own flush window, so batching adds no latency a browser
  * could observe.
  */
@@ -37,12 +37,12 @@ interface PendingBatch {
 }
 
 export class IngestBatcher {
-  private readonly chainStub: ChainStubResolver;
+  private readonly chainStub: ChainSinkResolver;
   private readonly windowMs: number;
   /** Messages waiting to be shipped, per chain. */
   private readonly pending = new Map<string, PendingBatch>();
 
-  constructor(chainStub: ChainStubResolver, windowMs: number = BATCH_WINDOW_MS) {
+  constructor(chainStub: ChainSinkResolver, windowMs: number = BATCH_WINDOW_MS) {
     this.chainStub = chainStub;
     this.windowMs = windowMs;
   }
@@ -91,7 +91,7 @@ export class IngestBatcher {
   }
 
   /**
-   * Reintroduce nodes a ChainDO no longer knows, then retry just their
+   * Reintroduce nodes a chain no longer knows, then retry just their
    * messages.
    *
    * An unknown key means that object was evicted while this gateway kept the
@@ -99,7 +99,7 @@ export class IngestBatcher {
    * not force a whole chain's traffic to be replayed.
    */
   private async recover(
-    stub: ReturnType<ChainStubResolver>,
+    stub: ChainSink,
     entries: PendingEntry[],
     unknown: string[],
   ): Promise<void> {

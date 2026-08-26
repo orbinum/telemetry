@@ -14,6 +14,36 @@ a whole: the worker and the UI compile the same wire contract from
 
 ### Changed
 
+- **The gateway no longer imports the chain's implementation to describe a
+  handle to it.** `MessageRouter` and `IngestBatcher` typed their chain handle
+  as a stub parameterised by the `ChainDO` class, so two files whose whole
+  purpose is to be independent of it named it anyway. They now depend on
+  `ChainSink`: the three calls the gateway actually makes.
+
+  The coupling was compile-time only and nothing behaved differently, but it
+  pointed the dependency the wrong way — the side that routes messages knew the
+  type of the side that receives them. Production wiring did not change: the
+  real stub satisfies the interface structurally.
+
+  The test doubles lose their casts through `never` and gain the port's own
+  signatures, so a mock that no longer matches what a chain accepts now fails
+  to compile instead of failing at runtime.
+
+- **Sockets are what the code writes to, not what the runtime hands it.** The
+  broadcaster and the node connection take an `OutboundSocket` — two methods,
+  `send` and `close`, which is all either ever used — instead of the full
+  WebSocket. Hibernation attachments move behind `SocketAttachment`, so
+  `NodeConnection` no longer calls `serializeAttachment` itself.
+
+  The narrowing shows up first in the tests: a socket double is now an object
+  literal rather than a cast through `unknown`, and the attachment is a value
+  the test holds rather than something bolted onto a fake socket. It still
+  round-trips through JSON, which is stricter than the structured clone the
+  runtime performs.
+
+  The byte budget keeps the property that matters: it survives an eviction, so
+  a client cannot reset its own rate limit by making the object drop.
+
 - **The chain directory is a store the gateway asks, not a table it owns.**
   `MessageRouter` and the gateway now depend on `ChainDirectoryStore`; only the
   adapter behind it knows there is SQLite involved. `SqlStorage` no longer

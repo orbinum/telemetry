@@ -4,9 +4,11 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 import { IngestBatcher } from "../../src/gateway-do/ingest-batcher";
 import { MessageRouter } from "../../src/gateway-do/message-router";
 import { RouteTable } from "../../src/gateway-do/route-table";
+import type { ChainSink } from "../../src/ports/chains";
 import { MAX_NODES_PER_CONNECTION } from "../../src/config/limits";
 import type { ChainDirectoryStore } from "../../src/ports/directory";
 import type { NodeConnection } from "../../src/gateway-do/connection";
@@ -46,19 +48,21 @@ function fakeConnection(id = "1") {
   } as unknown as NodeConnection & { close: ReturnType<typeof vi.fn> };
 }
 
-let nodeConnected: ReturnType<typeof vi.fn>;
-let nodeMessages: ReturnType<typeof vi.fn>;
+let nodeConnected: Mock<ChainSink["nodeConnected"]>;
+let connectionClosed: Mock<ChainSink["connectionClosed"]>;
+let nodeMessages: Mock<ChainSink["nodeMessages"]>;
 let batcher: IngestBatcher;
 let record: ReturnType<typeof vi.fn>;
 let routes: RouteTable;
 
 function makeRouter(allowed: Set<string> = new Set([ALLOWED])) {
-  nodeConnected = vi.fn(async () => {});
+  nodeConnected = vi.fn<ChainSink["nodeConnected"]>(async () => {});
+  connectionClosed = vi.fn<ChainSink["connectionClosed"]>(async () => {});
   // Batched RPC: resolves to the node keys the ChainDO did not recognize.
-  nodeMessages = vi.fn(async () => [] as string[]);
+  nodeMessages = vi.fn<ChainSink["nodeMessages"]>(async () => []);
   record = vi.fn();
   routes = new RouteTable();
-  const chainStub = () => ({ nodeConnected, nodeMessages }) as never;
+  const chainStub = () => ({ nodeConnected, nodeMessages, connectionClosed });
   batcher = new IngestBatcher(chainStub);
 
   return new MessageRouter({

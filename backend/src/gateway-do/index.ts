@@ -23,11 +23,14 @@
 import { DurableObject } from "cloudflare:workers";
 import { SqlChainDirectory } from "../adapters/cloudflare/sql-chain-directory";
 import { NodeConnection } from "./connection";
+import { hibernationAttachment } from "../adapters/cloudflare/socket-attachment";
 import { IngestBatcher } from "./ingest-batcher";
 import { frameToText } from "./frames";
 import { MessageRouter } from "./message-router";
 import { RouteTable } from "./route-table";
 import type { ChainDirectoryStore } from "../ports/directory";
+import type { NodeConnectionState } from "./connection";
+import type { OutboundSocket, SocketAttachment } from "../ports/transport";
 import { parseAllowedChains } from "../config/chains";
 import { CLOSE_BYTE_BUDGET } from "../config/limits";
 import { parseGeoHeader } from "../middleware/geo";
@@ -40,6 +43,9 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
   private readonly batcher: IngestBatcher;
   private readonly router: MessageRouter;
   private nextConnId = 1;
+
+  /** Where per-socket state lives while this object is evicted. */
+  private readonly attachment = hibernationAttachment<NodeConnectionState>();
 
   /**
    * This partition's half of a connection id. Node keys reach a ChainDO that
@@ -58,7 +64,7 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
     // Both build the same node keys, and the ChainDO pools them into one
     // table — the older node would be silently replaced. Resume past the
     // highest id still connected instead.
-    this.nextConnId = highestConnId(ctx.getWebSockets(), this.idPrefix) + 1;
+    this.nextConnId = highestConnId(ctx.getWebSockets(), this.idPrefix, this.attachment) + 1;
 
     const allowedChains = parseAllowedChains(env);
     if (allowedChains.size === 0) {
@@ -111,7 +117,7 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
       server,
       parseGeoHeader(request.headers),
     );
-    conn.persist();
+    conn.persist(this.attachment);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -125,7 +131,7 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
    * hand-rolled promise chain this used to carry.
    */
   override async webSocketMessage(socket: WebSocket, data: string | ArrayBuffer): Promise<void> {
-    const conn = NodeConnection.fromSocket(socket);
+    const conn = NodeConnection.fromSocket(socket, this.attachment);
     // No attachment means a socket this object never accepted as a node feed.
     if (conn === undefined) return;
 
@@ -135,7 +141,7 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
 
     // One place decides what a handled frame leaves behind, so no branch of
     // `onFrame` can forget to save the budget it just charged.
-    conn.persist();
+    conn.persist(this.attachment);
     if (conn.isClosed) await this.dropConnection(conn);
   }
 
@@ -148,7 +154,7 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
   }
 
   private async onSocketGone(socket: WebSocket): Promise<void> {
-    const conn = NodeConnection.fromSocket(socket);
+    const conn = NodeConnection.fromSocket(socket, this.attachment);
     if (conn === undefined) return;
     conn.markClosed();
     await this.dropConnection(conn);
@@ -211,10 +217,14 @@ export class GatewayDO extends DurableObject<CloudflareBindings> {
  * partition. Ids look like `<doId>-<n>`; anything unparseable is ignored
  * rather than trusted, since the attachment is only as good as the last write.
  */
-function highestConnId(sockets: WebSocket[], idPrefix: string): number {
+function highestConnId(
+  sockets: OutboundSocket[],
+  idPrefix: string,
+  attachment: SocketAttachment<NodeConnectionState>,
+): number {
   let highest = 0;
   for (const socket of sockets) {
-    const conn = NodeConnection.fromSocket(socket);
+    const conn = NodeConnection.fromSocket(socket, attachment);
     if (conn === undefined || !conn.id.startsWith(`${idPrefix}-`)) continue;
     const n = Number(conn.id.slice(idPrefix.length + 1));
     if (Number.isSafeInteger(n) && n > highest) highest = n;
